@@ -33,17 +33,19 @@ test: ## Run the tests with the race detector
 	go test -race ./...
 
 .PHONY: build
-build: ## Build the guard runner into bin/
+build: ## Build the guard runner and the commit gate into bin/
 	go build -o bin/bindery-guard ./cmd/bindery-guard
+	go build -o bin/bindery-gate ./cmd/bindery-gate
 
-# The demo pipes two invented tool calls through the runner on an invented
-# machine (a home directory and one workspace root that exist nowhere), so it
-# needs no network and reads no real path. It fails if either call gets the
-# wrong exit code.
+# The demo pipes two invented tool calls through the guard runner on an
+# invented machine (a home directory and one workspace root that exist
+# nowhere), then runs the commit gate in a throwaway repository under a
+# temporary directory that it removes. It needs no network and reads no real
+# path, and it fails if any step gets the wrong exit code.
 DEMO_ENV := HOME=/home/demo BINDERY_WORKSPACE_ROOTS=/srv/demo/app
 
 .PHONY: demo
-demo: build ## Pipe two invented tool calls through the guard runner
+demo: build ## Show the guard runner and the commit gate on invented data
 	@echo "== A destructive command, outside the workspace root (expect a refusal)"
 	@cat examples/refused.json
 	@code=0; env $(DEMO_ENV) bin/bindery-guard < examples/refused.json || code=$$?; \
@@ -54,4 +56,7 @@ demo: build ## Pipe two invented tool calls through the guard runner
 	@code=0; env $(DEMO_ENV) bin/bindery-guard < examples/silent.json || code=$$?; \
 	echo "exit $$code"; test "$$code" -eq 0
 	@echo
-	@echo "The commit gate and the message bus arrive in the later pieces."
+	@echo "== The commit gate, in a throwaway repository that is removed afterwards"
+	@sh examples/gate/demo.sh bin
+	@echo
+	@echo "The message bus arrives in the last piece."
