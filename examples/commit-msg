@@ -1,0 +1,8 @@
+#!/bin/sh
+# A git commit-msg hook that runs the commit gate. Git passes the path of the
+# message file as the first argument, and a non-zero exit refuses the commit.
+#
+# Install it from the repository you want gated:
+#   cp examples/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+# BINDERY_GATE names the binary when it is not on PATH.
+exec "${BINDERY_GATE:-bindery-gate}" "$1"
