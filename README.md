@@ -3,7 +3,7 @@
 [![CI](https://github.com/kingletas/bindery/actions/workflows/ci.yml/badge.svg)](https://github.com/kingletas/bindery/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Bindery is a small, runnable showcase of the safety nets around a team of AI coding sessions: guards that read each tool call an agent's pre-tool-use hook hands them and refuse the dangerous ones before they run, a commit gate that sends each changed file to the checks (lanes) that cover it, and a message bus between named sessions. It is written in Go, on the standard library plus one shell parser, and every name, path and host in it is invented.
+Bindery is a small, runnable showcase of the safety nets around a team of AI coding sessions: guards that read each tool call an agent's pre-tool-use hook hands them and refuse the dangerous ones before they run, a commit gate that sends each changed file to the checks (lanes) that cover it, and a message bus between named sessions. It is written in Go, on the standard library plus one shell parser, and every name, path and host in its code, tests and examples is invented.
 
 > **Status: the guards, the commit gate and the message bus are built**, and `make demo` shows all three on invented data.
 
@@ -253,6 +253,10 @@ Bindery is a smaller re-implementation of a private internal system, written fre
 - quiet tells and other delivery modes. Every `tell` here is the same kind of message, and a `wait` returns it
 
 The showcase keeps one small, honest version of three ideas from it, and nothing more. Where this README says what the showcase does, it means this code, and it makes no claim about what the private system does.
+
+## Who builds it
+
+Bindery is Luis Tineo's project. Its commits are signed by AI agent sessions he runs, each under its own role name. He directs the work, another session reviews every change before it merges, and nothing reaches GitHub until he pushes it.
 
 ## Contributing and security
 
