@@ -152,6 +152,78 @@ func TestRecursiveDeleteRefusesALoneUnknownWordThatMaySplit(t *testing.T) {
 	)
 }
 
+// A command the scanner does not know may run another command, so its words
+// are read from the first one that names a tool the guards read. These are the
+// runners and command-string holders a fixed list missed.
+func TestRecursiveDeleteRefusesWhatAnUnknownRunnerRuns(t *testing.T) {
+	cases := map[string]string{
+		"an alias body":            "alias x='rm -rf /srv/other'\nx",
+		"an alias body, one line":  "alias x='rm -rf /srv/other'; x",
+		"an alias with options":    "alias -- x='rm -rf /srv/other'",
+		"a trap body":              "trap 'rm -rf /srv/other' EXIT",
+		"a trap after --":          "trap -- 'rm -rf /srv/other' INT TERM",
+		"flock":                    "flock /tmp/l rm -rf /srv/other",
+		"flock -c":                 "flock /tmp/l -c 'rm -rf /srv/other'",
+		"watch":                    "watch -n1 rm -rf /srv/other",
+		"parallel":                 "parallel rm -rf ::: /srv/other",
+		"systemd-run":              "systemd-run --user rm -rf /srv/other",
+		"script -c":                "script -qc 'rm -rf /srv/other' /dev/null",
+		"su -c":                    "su -c 'rm -rf /srv/other' someone",
+		"runuser":                  "runuser -u someone -- rm -rf /srv/other",
+		"chroot":                   "chroot / rm -rf /srv/other",
+		"busybox":                  "busybox rm -rf /srv/other",
+		"toybox":                   "toybox rm -rf /srv/other",
+		"a runner never heard of":  "frobnicate --fast rm -rf /srv/other",
+		"an option holding a line": "frobnicate --command='rm -rf /srv/other'",
+		"a string with operators":  "ssh host.example.test 'cd /tmp && rm -rf /srv/other'",
+		"a runner behind a runner": "flock /tmp/l watch -n1 rm -rf /srv/other",
+		"a runner behind sudo":     "sudo flock /tmp/l rm -rf /srv/other",
+		"a runner in a pipeline":   "ls | flock /tmp/l rm -rf /srv/other",
+		"a runner in a string":     "bash -c 'flock /tmp/l rm -rf /srv/other'",
+		"a trap inside a function": "f() { trap 'rm -rf /srv/other' EXIT; }; f",
+		"an alias inside bash -c":  "bash -c \"alias x='rm -rf /srv/other'; x\"",
+		"find behind a runner":     "flock /tmp/l find /srv/other -delete",
+		"a runner given the home":  "flock /tmp/l rm -rf ~",
+	}
+	for name, command := range cases {
+		t.Run(name, func(t *testing.T) {
+			assertRefuses(t, RecursiveDelete{}, testConfig(), command)
+		})
+	}
+}
+
+// Commands that only treat their words as data, and runners given a harmless
+// command, stay silent.
+func TestRecursiveDeleteStaysSilentOnWordsThatAreOnlyData(t *testing.T) {
+	assertSilent(t, RecursiveDelete{}, testConfig(),
+		"echo rm -rf /",
+		"echo 'rm -rf /srv/other'",
+		`printf '%s\n' "rm -rf /srv/other"`,
+		"grep rm notes.txt",
+		"grep -r 'rm -rf /' docs",
+		"rg rm src",
+		"cat rm.txt",
+		"man rm",
+		"flock /tmp/l echo rm -rf /srv/other",
+		"watch -n1 echo rm -rf /srv/other",
+		"su -c 'echo rm -rf /srv/other' someone",
+		"flock /tmp/l rm -rf build",
+		"flock /tmp/l -c 'rm -rf build'",
+		"chroot / ls /srv/other",
+		"go test ./...",
+		"make clean",
+		"npm run build",
+		"alias ll='ls -la'",
+		"alias gs='git status'",
+		"trap 'echo bye' EXIT",
+		"trap - EXIT",
+		"trap -l",
+		"frobnicate --fast build",
+		"frobnicate 'a sentence with rm in it'",
+		"frobnicate 'not (valid shell'",
+	)
+}
+
 func TestRecursiveDeleteReasonNamesTheTarget(t *testing.T) {
 	reason := RecursiveDelete{}.Check(shellInput(t, testConfig(), "rm -rf /tmp/other"))
 	if !strings.Contains(reason, `"/tmp/other"`) || !strings.Contains(reason, "outside the workspace root") {

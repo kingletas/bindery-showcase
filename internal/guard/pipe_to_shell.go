@@ -17,10 +17,6 @@ func (PipeToShell) Name() string { return "pipe-to-shell" }
 
 var downloaders = map[string]bool{"curl": true, "wget": true, "fetch": true}
 
-var otherInterpreters = map[string]bool{
-	"python": true, "python3": true, "perl": true, "ruby": true, "node": true,
-}
-
 // scriptRunners also execute text given to them as an argument.
 var scriptRunners = map[string]bool{"eval": true, "source": true, ".": true}
 
@@ -62,7 +58,7 @@ func readsStdinAsScript(inv shellscan.Invocation) bool {
 	switch {
 	case shellscan.IsShell(inv.Name):
 		return shellscan.ParseShellArgs(inv.Args).ReadsStdin
-	case otherInterpreters[inv.Name]:
+	case shellscan.IsScriptInterpreter(inv.Name):
 		// The interpreter reads stdin when it is given no script, or a script
 		// that names stdin.
 		for _, a := range inv.Args {
@@ -85,7 +81,7 @@ func readsStdinAsScript(inv shellscan.Invocation) bool {
 // only the running shell can resolve. It might name stdin, so downstream of a
 // download it is treated as reading the download.
 func hasUnknownOperand(inv shellscan.Invocation) bool {
-	if !shellscan.IsShell(inv.Name) && !otherInterpreters[inv.Name] {
+	if !shellscan.IsShell(inv.Name) && !shellscan.IsScriptInterpreter(inv.Name) {
 		return false
 	}
 	for _, a := range inv.Args {
@@ -97,7 +93,7 @@ func hasUnknownOperand(inv shellscan.Invocation) bool {
 }
 
 func runsItsArguments(inv shellscan.Invocation) bool {
-	return shellscan.IsShell(inv.Name) || otherInterpreters[inv.Name] || scriptRunners[inv.Name]
+	return shellscan.IsShell(inv.Name) || shellscan.IsScriptInterpreter(inv.Name) || scriptRunners[inv.Name]
 }
 
 func argumentHoldsDownload(args []shellscan.Arg) bool {

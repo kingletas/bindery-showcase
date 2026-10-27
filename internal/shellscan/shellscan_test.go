@@ -221,6 +221,48 @@ func TestAnUnknownWordSaysWhetherItMaySplit(t *testing.T) {
 	}
 }
 
+func TestAnUnknownCommandIsReadAsAPossibleRunner(t *testing.T) {
+	runs := map[string]string{
+		"frobnicate rm -rf build":                 "rm",
+		"frobnicate --fast /usr/bin/rm -rf build": "rm",
+		"frobnicate -c 'cd x && rm -rf build'":    "rm",
+		"frobnicate --cmd='rm -rf build'":         "rm",
+		"frobnicate a b git push":                 "git",
+		"frobnicate nice rm -rf build":            "nice",
+		"alias x='rm -rf build'":                  "rm",
+		"trap 'rm -rf build' EXIT":                "rm",
+		"trap -- 'rm -rf build' INT":              "rm",
+	}
+	for line, want := range runs {
+		if _, ok := find(mustParse(t, line), want); !ok {
+			t.Errorf("%q: no %s found", line, want)
+		}
+	}
+	data := []string{
+		"echo rm -rf build",
+		"printf '%s' rm",
+		"frobnicate echo rm -rf build", // a words-only command ends the search
+		"frobnicate 'sentence with rm'",
+		"trap - EXIT",
+		"trap -l",
+		"alias ll='ls -la'",
+	}
+	for _, line := range data {
+		scan := mustParse(t, line)
+		if inv, ok := find(scan, "rm"); ok && len(inv.Args) > 0 && inv.Args[0].Text == "-rf" {
+			t.Errorf("%q: rm -rf was found, but those words are data", line)
+		}
+	}
+}
+
+func TestAnAliasOrTrapBuiltFromAVariableIsUnreadable(t *testing.T) {
+	for _, line := range []string{"alias x=$body", `trap "$action" EXIT`} {
+		if scan := mustParse(t, line); len(scan.Unreadable) == 0 {
+			t.Errorf("%q should report an unreadable part", line)
+		}
+	}
+}
+
 func TestBraceListsExpand(t *testing.T) {
 	scan := mustParse(t, "rm -rf {a,b}/c")
 	rm, _ := find(scan, "rm")

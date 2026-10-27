@@ -3,6 +3,8 @@ package guard
 import (
 	"strings"
 	"testing"
+
+	"github.com/kingletas/bindery/internal/shellscan"
 )
 
 func TestSecretsReadIsSilentOnHarmlessCommands(t *testing.T) {
@@ -78,6 +80,39 @@ func TestSecretsReadCoversTheReadTool(t *testing.T) {
 	}
 	if reason := (SecretsRead{}).Check(read("/home/sample/work/app/.env.example")); reason != "" {
 		t.Errorf("a Read of a template should be silent, got %q", reason)
+	}
+}
+
+func TestSecretsReadRefusesWhatAnUnknownRunnerRuns(t *testing.T) {
+	assertRefuses(t, SecretsRead{}, testConfig(),
+		"flock /tmp/l cat .env",
+		"watch -n1 cat .env",
+		"su -c 'cat ~/.ssh/id_rsa' someone",
+		"trap 'cat .env' EXIT",
+		"alias show='cat .env'",
+	)
+	assertSilent(t, SecretsRead{}, testConfig(),
+		"flock /tmp/l cat notes.txt",
+		"echo .env",
+		"su -c 'echo .env' someone",
+	)
+}
+
+func TestSecretsReadersAreAllKnownToTheScanner(t *testing.T) {
+	// A reader the scanner does not know would be skipped when an unknown
+	// command runs it, so every name here has to be a tool the scanner reads.
+	for name := range readers {
+		scan, err := shellscan.Parse("frobnicate "+name+" .env", shellscan.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, inv := range scan.Invocations {
+			found = found || (inv.Known && inv.Name == name)
+		}
+		if !found {
+			t.Errorf("%q is a secrets reader but an unknown command does not run it", name)
+		}
 	}
 }
 

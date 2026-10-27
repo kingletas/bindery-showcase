@@ -143,6 +143,23 @@ func TestForcePushStaysSilentWhenAnUnknownWordCannotReachAProtectedBranch(t *tes
 	)
 }
 
+func TestForcePushRefusesWhatAnUnknownRunnerRuns(t *testing.T) {
+	assertRefuses(t, ForcePush{}, testConfig(),
+		"flock /tmp/l git push --force origin main",
+		"watch -n1 git push -f origin main",
+		"su -c 'git push --force origin main' someone",
+		"trap 'git push --force origin main' EXIT",
+		"alias p='git push --force origin main'",
+		"script -qc 'git push -f origin master' /dev/null",
+	)
+	assertSilent(t, ForcePush{}, testConfig(),
+		"flock /tmp/l git push origin feature/login",
+		"echo git push --force origin main",
+		"su -c 'git status' someone",
+		"trap 'git push origin feature/login' EXIT",
+	)
+}
+
 func TestForcePushUsesTheConfiguredBranches(t *testing.T) {
 	cfg := testConfig()
 	cfg.ProtectedBranches = []string{"release/*", "trunk"}

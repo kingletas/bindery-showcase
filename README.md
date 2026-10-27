@@ -57,7 +57,11 @@ The guards walk the parsed tree rather than the text, so a command is found wher
 - inside `$(...)`, backquotes and `<(...)`, and in a pipeline
 - inside `bash -c '...'`, `sh -c`, `eval`, a here-document or a here-string given to a shell
 - behind `timeout`, `nice`, `ionice`, `env`, `nohup`, `setsid`, `stdbuf`, `sudo`, `doas`, `command`, `exec`, `xargs` and `find -exec`
+- in the body of an `alias` or a `trap`, which are read as command strings
+- behind any command the scanner does not know, such as `flock`, `watch`, `parallel`, `systemd-run`, `script -c`, `su -c`, `runuser`, `chroot` or `busybox`
 - written as `/bin/rm`, `\rm`, `'rm'` or the dollar-quoted `$'rm'` and `$'\x72m'`, since words are expanded the way a shell would
+
+The last two bullets are one rule, not a list of runners. A command that is neither a tool a guard reads nor on a short list of words-only commands (`echo`, `printf`, `ls`, `man` and the like) is read as a possible runner. Its words are searched for the first one that names a tool the guards read, such as `rm`, `find`, `git`, a shell or an interpreter, and the rest of the line is read from there as the command it runs. A word holding spaces or operators is read as a command string. A words-only command ends the search, so `echo rm -rf /` and `flock lock echo rm -rf /` stay silent. The rule errs toward refusing: `ssh host rm -rf /tmp/x` is judged as a local delete.
 
 A part of the line that depends on the running shell is not guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution is treated as unreadable, and so is a shell that takes its script from a pipe, including `bash -`, `bash /dev/stdin` and `bash /dev/fd/0`. Only `$HOME` and a leading `~` are resolved, from the configured home directory.
 
@@ -87,7 +91,7 @@ Every value has a default and is overridden by an environment variable. Nothing 
 
 ### Limits
 
-The guards read the command line and nothing else: they do not follow symlinks, expand globs against the disk, read aliases, or see what a script file will do. The wrapper list is a fixed list, not every command that can run another. `secrets-read` is a tripwire for the obvious read and not a boundary. A forced push that does not name its branch is refused, because the current branch is not visible from the command line, so say which branch you mean.
+The guards read the command line and nothing else: they do not follow symlinks, expand globs against the disk, know aliases or functions defined outside the command line, or see what a script file will do. The wrappers that are looked through by name are a fixed list; any other command is read by the runner rule above, which depends on the runner's command appearing among its words. `secrets-read` is a tripwire for the obvious read and not a boundary. A forced push that does not name its branch is refused, because the current branch is not visible from the command line, so say which branch you mean.
 
 ## Run it
 

@@ -257,9 +257,15 @@ func (s *scanner) invoke(args []Arg, ctx context) {
 		s.find(rest, ctx)
 	case inv.Name == "xargs":
 		s.xargs(rest, ctx)
+	case inv.Name == "alias":
+		s.alias(rest, ctx)
+	case inv.Name == "trap":
+		s.trap(rest, ctx)
 	default:
 		if spec, ok := wrappers[inv.Name]; ok {
 			s.wrap(inv.Name, spec, rest, ctx)
+		} else if !isRunnable(inv.Name) && !wordsOnly[inv.Name] {
+			s.runner(rest, ctx)
 		}
 	}
 }
