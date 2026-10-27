@@ -13,8 +13,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/kingletas/bindery/internal/guard"
-	"github.com/kingletas/bindery/internal/version"
+	"github.com/kingletas/bindery-showcase/internal/guard"
+	"github.com/kingletas/bindery-showcase/internal/version"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kingletas/bindery/internal/shellscan"
+	"github.com/kingletas/bindery-showcase/internal/shellscan"
 )
 
 // PipeToShell refuses a download that is run as it arrives: curl or wget piped

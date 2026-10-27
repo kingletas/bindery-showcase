@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/kingletas/bindery/internal/shellscan"
+	"github.com/kingletas/bindery-showcase/internal/shellscan"
 )
 
 // Input is what a guard is shown.

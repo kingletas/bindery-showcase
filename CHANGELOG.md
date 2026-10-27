@@ -29,3 +29,4 @@
 - A symbolic link at the bus directory is refused with an exit code of 2, not followed. A link higher up the path is still fine.
 - `make demo` ends with two invented sessions on a bus in a temporary directory that it removes: one waits in the background, the other tells it a message, and the wait prints it. A second wait exits 1 because the message was returned once, and `who` lists both names.
 - The README table points the bus claim at its files and tests, a new section documents the commands, the storage, the lock, the exit codes and the limits, and "What this is not" says the bus has no persistent store, no chat or forge poller and no quiet tells.
+- The repository is published as bindery-showcase. The Go module path, the CI badge and the clone line in the from-nothing guide use that name, and the three binaries keep theirs.

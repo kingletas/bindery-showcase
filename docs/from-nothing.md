@@ -21,7 +21,7 @@ All three jobs are built, and the README lists each claim with the file and test
 You need Go 1.27 or newer, `make` and `git`. The module has one dependency, the shell parser `mvdan.cc/sh/v3`, which Go downloads on the first build.
 
 ```bash
-git clone https://github.com/kingletas/bindery && cd bindery
+git clone https://github.com/kingletas/bindery-showcase && cd bindery-showcase
 ```
 
 ## Step 2: run the check

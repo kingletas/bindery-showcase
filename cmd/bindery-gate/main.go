@@ -19,8 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kingletas/bindery/internal/gate"
-	"github.com/kingletas/bindery/internal/version"
+	"github.com/kingletas/bindery-showcase/internal/gate"
+	"github.com/kingletas/bindery-showcase/internal/version"
 )
 
 const (

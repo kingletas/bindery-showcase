@@ -25,8 +25,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/kingletas/bindery/internal/bus"
-	"github.com/kingletas/bindery/internal/version"
+	"github.com/kingletas/bindery-showcase/internal/bus"
+	"github.com/kingletas/bindery-showcase/internal/version"
 )
 
 const (

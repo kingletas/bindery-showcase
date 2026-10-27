@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kingletas/bindery/internal/guard"
+	"github.com/kingletas/bindery-showcase/internal/guard"
 )
 
 // demoConfig matches what the Makefile's demo target sets in the environment.

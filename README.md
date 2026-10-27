@@ -1,6 +1,6 @@
-# bindery
+# bindery-showcase
 
-[![CI](https://github.com/kingletas/bindery/actions/workflows/ci.yml/badge.svg)](https://github.com/kingletas/bindery/actions/workflows/ci.yml)
+[![CI](https://github.com/kingletas/bindery-showcase/actions/workflows/ci.yml/badge.svg)](https://github.com/kingletas/bindery-showcase/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Bindery is a small, runnable showcase of the safety nets around a team of AI coding sessions: guards that read each tool call an agent's pre-tool-use hook hands them and refuse the dangerous ones before they run, a commit gate that sends each changed file to the checks (lanes) that cover it, and a message bus between named sessions. It is written in Go, on the standard library plus one shell parser, and every name, path and host in its code, tests and examples is invented.
