@@ -77,7 +77,15 @@ func TestVersionAndUsage(t *testing.T) {
 	if code, stdout, _ := runOn(t, "", "--version"); code != 0 || stdout != "bindery dev\n" {
 		t.Errorf("--version: code %d, stdout %q", code, stdout)
 	}
-	if code, _, stderr := runOn(t, "", "extra"); code != 1 || !strings.Contains(stderr, "usage:") {
-		t.Errorf("an argument: code %d, stderr %q", code, stderr)
+}
+
+// A pre-tool-use hook treats every exit code other than 2 as "do not block", so
+// a misused runner must refuse with 2 and never let a call through with 1.
+func TestMisuseExitsTwoWithTheUsageOnStderr(t *testing.T) {
+	for _, args := range [][]string{{"extra"}, {"--bogus"}, {"-h"}, {"--version", "extra"}, {"a", "b"}} {
+		code, stdout, stderr := runOn(t, example(t, "silent.json"), args...)
+		if code != 2 || stdout != "" || !strings.Contains(stderr, "usage:") {
+			t.Errorf("args %q: code %d, stdout %q, stderr %q; want 2, no stdout and the usage on stderr", args, code, stdout, stderr)
+		}
 	}
 }

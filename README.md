@@ -39,10 +39,9 @@ Other fields, such as a session identifier, are ignored. The [examples](examples
 | Exit code | Meaning |
 |---|---|
 | 0 | Every guard is silent. Nothing is printed. |
-| 2 | A guard refused the call. One line goes to standard error, naming the guard and giving one sentence of reason. |
-| 1 | The runner was started wrongly, for example with an argument it does not take. |
+| 2 | The call is blocked. A guard refused it, or the runner could not do its job, for example because it was started with an argument it does not take. One line goes to standard error: the guard's name and one sentence of reason, or the usage text. |
 
-A call that is not one JSON object of the shape above is refused too, with exit code 2, as is one whose shell command cannot be read, so a hook that invokes `bindery-guard` fails closed. A refusal looks like this:
+There is no other non-zero code, because a pre-tool-use hook blocks only on 2 and lets a call through on any other exit. A call that is not one JSON object of the shape above is refused too, as is one whose shell command cannot be read, so a hook that invokes `bindery-guard` fails closed. A refusal looks like this:
 
 ```
 bindery-guard: recursive-delete: Recursive delete of "/srv/demo/data" is refused, because it is outside the workspace root.
@@ -60,7 +59,9 @@ The guards walk the parsed tree rather than the text, so a command is found wher
 - behind `timeout`, `nice`, `ionice`, `env`, `nohup`, `setsid`, `stdbuf`, `sudo`, `doas`, `command`, `exec`, `xargs` and `find -exec`
 - written as `/bin/rm`, `\rm`, `'rm'` or the dollar-quoted `$'rm'` and `$'\x72m'`, since words are expanded the way a shell would
 
-A part of the line that depends on the running shell is not guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution is treated as unreadable, and so is a shell that takes its script from a pipe. Only `$HOME` and a leading `~` are resolved, from the configured home directory.
+A part of the line that depends on the running shell is not guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution is treated as unreadable, and so is a shell that takes its script from a pipe, including `bash -`, `bash /dev/stdin` and `bash /dev/fd/0`. Only `$HOME` and a leading `~` are resolved, from the configured home directory.
+
+A word that is unknown where an option could stand might be the flag that matters, so it is not skipped. In `rm $OPTS /srv/x` the unknown word may be `-rf`, and in `git push $F origin main` it may be `--force`; the guards judge those lines as if the flag were there. Downstream of a download, a shell or interpreter with an unknown operand is read as possibly reading the download.
 
 ### The guards
 

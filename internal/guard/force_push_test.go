@@ -115,6 +115,34 @@ func TestForcePushRefusesAProtectedBranch(t *testing.T) {
 	}
 }
 
+// An unknown word before -- may hold --force or --delete, so the push is read
+// as possibly forced and judged on its target.
+func TestForcePushRefusesAnUnknownWordThatMayHideTheForceFlag(t *testing.T) {
+	assertRefuses(t, ForcePush{}, testConfig(),
+		"git push $F origin main",
+		`git push "$F" origin main`,
+		"git push origin main $F",
+		"git push ${FLAGS} origin master",
+		"git push $F",                // no branch named
+		"git push $F origin",         // no branch named
+		"git push $F origin $BRANCH", // target unknown
+		"git push origin $BRANCH $F",
+		"git push $(echo -f) origin main",
+		"git push $F -- origin main",
+		"git $GLOBAL push -f origin main", // the word may be git's own option or push itself
+		"sudo git push $F origin main",
+		"bash -c 'git push $F origin main'",
+	)
+}
+
+func TestForcePushStaysSilentWhenAnUnknownWordCannotReachAProtectedBranch(t *testing.T) {
+	assertSilent(t, ForcePush{}, testConfig(),
+		"git push $F origin feature/login", // possibly forced, but the branch is not protected
+		"git push origin feature/login -- $X",
+		"git status $X",
+	)
+}
+
 func TestForcePushUsesTheConfiguredBranches(t *testing.T) {
 	cfg := testConfig()
 	cfg.ProtectedBranches = []string{"release/*", "trunk"}

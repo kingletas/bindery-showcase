@@ -20,6 +20,9 @@ func TestRecursiveDeleteIsSilentOnHarmlessCommands(t *testing.T) {
 		"rm -rf /home/sample/work/app/*.log", // glob inside the root
 		"rm -r -- -odd-name",                 // an operand that looks like a flag
 		"rm -rf",                             // no operand at all
+		`rm "$file"`,                         // one unknown word and no recursive flag
+		`rm -- "$file"`,                      // after --, a word is an operand
+		`rm -f "$file"`,
 		"find . -name '*.o' -print",
 		"find . -name '*.o' -delete", // the start path is the root, matches are inside
 		"find build -delete",
@@ -103,6 +106,23 @@ func TestRecursiveDeleteRefusesATargetItCannotResolve(t *testing.T) {
 		"rm -rf {1..99999}",
 		"cd /tmp && rm -rf build", // a relative path after cd starts somewhere unknown
 		"pushd /tmp; rm -rf build",
+	)
+}
+
+// An unknown word before -- may hold -r, so beside another operand the line is
+// read as a possible recursive delete.
+func TestRecursiveDeleteRefusesAnUnknownWordThatMayHideTheRecursiveFlag(t *testing.T) {
+	assertRefuses(t, RecursiveDelete{}, testConfig(),
+		"rm $OPTS /srv/x",
+		`rm "$OPTS" /srv/x`,
+		"rm ${OPTS} build",
+		"rm $OPTS build/x.o",
+		"rm $(echo -rf) /srv/x",
+		"rm $A $B",
+		"rm -f $OPTS /srv/x",
+		"sudo rm $OPTS /srv/x",
+		"bash -c 'rm $OPTS /srv/x'",
+		"echo /srv/x | xargs rm $OPTS",
 	)
 }
 

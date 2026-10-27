@@ -43,18 +43,21 @@ var gitValueOptions = map[string]bool{
 }
 
 // afterSubcommand returns the words after git's subcommand when it is want,
-// skipping git's own global options.
+// skipping git's own global options. A word before the subcommand that is not
+// known might be one of those options or the subcommand itself, so it is
+// skipped and the next word is then accepted as the subcommand.
 func afterSubcommand(args []shellscan.Arg, want string) ([]shellscan.Arg, bool) {
+	sawUnknown := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case !a.Known:
-			return nil, false
+			sawUnknown = true
 		case gitValueOptions[a.Text]:
 			i++
 		case strings.HasPrefix(a.Text, "-"):
 		default:
-			return args[i+1:], a.Text == want
+			return args[i+1:], a.Text == want || sawUnknown
 		}
 	}
 	return nil, false
@@ -66,15 +69,21 @@ var pushValueOptions = map[string]bool{
 }
 
 func checkPush(args []shellscan.Arg, protected []string) string {
-	var force, deleteFlag, every, tags bool
+	var force, deleteFlag, every, tags, unknownWord bool
 	var positional []shellscan.Arg
 	optionsEnded := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		t := a.Text
 		switch {
-		case optionsEnded || !a.Known || !strings.HasPrefix(t, "-"):
+		case optionsEnded || (a.Known && !strings.HasPrefix(t, "-")):
 			positional = append(positional, a)
+		case !a.Known:
+			// The word might be --force or --delete, so the push is judged as
+			// forced: refused when it targets a protected branch or names none.
+			// The word is not counted as a remote or a branch.
+			unknownWord = true
+			force = true
 		case t == "--":
 			optionsEnded = true
 		case t == "--force" || strings.HasPrefix(t, "--force-with-lease") || t == "--force-if-includes":
@@ -104,6 +113,9 @@ func checkPush(args []shellscan.Arg, protected []string) string {
 	}
 	if len(specs) == 0 {
 		if force && !tags {
+			if unknownWord {
+				return "A push with a word that is only known at run time is refused, because the word may force the push and the guard cannot tell which branch it targets."
+			}
 			return "A force-push that does not name its branch is refused, because the guard cannot tell whether it targets a protected branch."
 		}
 		return ""

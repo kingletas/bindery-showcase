@@ -43,7 +43,7 @@ func (PipeToShell) Check(in Input) string {
 		if !inv.Known {
 			continue
 		}
-		if readsStdinAsScript(inv) {
+		if readsStdinAsScript(inv) || hasUnknownOperand(inv) {
 			for _, tag := range inv.Pipes {
 				if stage, ok := downloadStage[tag.ID]; ok && stage < tag.Stage {
 					return fmt.Sprintf("Piping a download into %s is refused, because it would run code that nobody has read.", strconv.Quote(inv.Name))
@@ -63,21 +63,35 @@ func readsStdinAsScript(inv shellscan.Invocation) bool {
 	case shellscan.IsShell(inv.Name):
 		return shellscan.ParseShellArgs(inv.Args).ReadsStdin
 	case otherInterpreters[inv.Name]:
-		// The interpreter reads stdin when it is given no script, or "-".
+		// The interpreter reads stdin when it is given no script, or a script
+		// that names stdin.
 		for _, a := range inv.Args {
 			switch {
 			case !a.Known:
 				return false
-			case a.Text == "-":
-				return true
 			case a.Text == "-c" || a.Text == "-e" || a.Text == "-m":
 				return false
-			case strings.HasPrefix(a.Text, "-"):
+			case a.Text != "-" && strings.HasPrefix(a.Text, "-"):
 			default:
-				return false
+				return shellscan.IsStdinPath(a.Text)
 			}
 		}
 		return true
+	}
+	return false
+}
+
+// hasUnknownOperand reports whether a shell or interpreter was given a word
+// only the running shell can resolve. It might name stdin, so downstream of a
+// download it is treated as reading the download.
+func hasUnknownOperand(inv shellscan.Invocation) bool {
+	if !shellscan.IsShell(inv.Name) && !otherInterpreters[inv.Name] {
+		return false
+	}
+	for _, a := range inv.Args {
+		if !a.Known {
+			return true
+		}
 	}
 	return false
 }

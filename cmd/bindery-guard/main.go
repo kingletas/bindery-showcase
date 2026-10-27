@@ -1,9 +1,11 @@
 // Command bindery-guard reads one tool call as JSON on standard input and runs
 // every guard against it.
 //
-// Exit codes: 0 when every guard is silent (nothing is printed), 2 when a
-// guard or the reader refuses (one line naming it goes to standard error), and
-// 1 when the runner itself is misused.
+// Exit codes: 0 when every guard is silent (nothing is printed), and 2 for
+// anything else: a guard or the reader refusing (one line naming it goes to
+// standard error), or the runner being started wrongly (the usage goes to
+// standard error). A pre-tool-use hook blocks only on 2, so no failure of the
+// runner may exit with another non-zero code.
 package main
 
 import (
@@ -16,9 +18,8 @@ import (
 )
 
 const (
-	exitSilent  = 0
-	exitUsage   = 1
-	exitRefused = 2
+	exitSilent = 0
+	exitBlock  = 2
 )
 
 func main() {
@@ -33,12 +34,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, cfg guard.Con
 	}
 	if len(args) != 0 {
 		fmt.Fprintln(stderr, "usage: bindery-guard < tool-call.json")
-		return exitUsage
+		return exitBlock
 	}
 	verdict := guard.Evaluate(stdin, cfg, guard.Default())
 	if !verdict.Refused {
 		return exitSilent
 	}
 	fmt.Fprintf(stderr, "bindery-guard: %s: %s\n", verdict.Guard, verdict.Reason)
-	return exitRefused
+	return exitBlock
 }

@@ -267,6 +267,9 @@ func TestPartsItCannotReadAreReported(t *testing.T) {
 		"a heredoc with a variable":     "bash <<EOF\nrm -rf $dir\nEOF",
 		"a shell reading a pipe":        `echo 'rm -rf build' | sh`,
 		"a shell reading a pipe, -s":    `echo 'rm -rf build' | bash -s`,
+		"a shell told to read stdin":    `echo 'rm -rf build' | bash /dev/stdin`,
+		"a shell told to read fd 0":     `echo 'rm -rf build' | sh /dev/fd/0`,
+		"a shell given dash":            `echo 'rm -rf build' | bash -`,
 		"a nested string that is bad":   `bash -c 'echo "abc'`,
 		"wrapper options from variable": `timeout $secs rm -rf build`,
 		"xargs options from a variable": `echo x | xargs $opts rm`,
@@ -357,6 +360,13 @@ func TestParseShellArgs(t *testing.T) {
 		{"+x", "", false, true},
 		{"--norc", "", false, true},
 		{"-c", "", false, false},
+		{"-", "", false, true},
+		{"/dev/stdin", "", false, true},
+		{"/dev/fd/0", "", false, true},
+		{"/proc/self/fd/0", "", false, true},
+		{"-x /dev/stdin", "", false, true},
+		{"script.sh /dev/stdin", "", false, false}, // the second operand is the script's argument
+		{"-c echo /dev/stdin", "echo", true, false},
 	}
 	for _, c := range cases {
 		sa := ParseShellArgs(arg(strings.Fields(c.args)...))

@@ -59,13 +59,20 @@ func (RecursiveDelete) Check(in Input) string {
 	return ""
 }
 
-// rmTargets splits rm's words into its operands and says whether a recursive
-// flag is present among the words that can be read.
+// rmTargets splits rm's words into its operands and says whether the delete is
+// recursive. A word before -- that is not known might be -r, so beside any other
+// operand it makes the delete count as recursive; alone it is just a name.
 func rmTargets(args []shellscan.Arg) (targets []shellscan.Arg, recursive bool) {
 	optionsEnded := false
+	unknownBeforeEnd := false
 	for _, a := range args {
 		switch {
-		case optionsEnded || !a.Known || !strings.HasPrefix(a.Text, "-") || a.Text == "-":
+		case optionsEnded:
+			targets = append(targets, a)
+		case !a.Known:
+			unknownBeforeEnd = true
+			targets = append(targets, a)
+		case !strings.HasPrefix(a.Text, "-") || a.Text == "-":
 			targets = append(targets, a)
 		case a.Text == "--":
 			optionsEnded = true
@@ -74,6 +81,9 @@ func rmTargets(args []shellscan.Arg) (targets []shellscan.Arg, recursive bool) {
 		case !strings.HasPrefix(a.Text, "--") && strings.ContainsAny(a.Text, "rR"):
 			recursive = true
 		}
+	}
+	if unknownBeforeEnd && len(targets) > 1 {
+		recursive = true
 	}
 	return targets, recursive
 }
