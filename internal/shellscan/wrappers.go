@@ -192,7 +192,7 @@ func (s *scanner) xargs(rest []Arg, ctx context) {
 			}
 		}
 	} else {
-		cmd = append(cmd, Arg{})
+		cmd = append(cmd, Arg{MaySplit: true}) // standard input is split into words
 	}
 	s.invoke(cmd, ctx)
 }

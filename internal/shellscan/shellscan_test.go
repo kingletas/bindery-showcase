@@ -193,6 +193,34 @@ func TestOtherExpansionsAreUnknownNeverEmpty(t *testing.T) {
 	}
 }
 
+func TestAnUnknownWordSaysWhetherItMaySplit(t *testing.T) {
+	cases := map[string]bool{
+		`$X`:          true,
+		`${X}`:        true,
+		`$(cat l)`:    true,
+		"`cat l`":     true,
+		`$((1+1))`:    true,
+		`a$X`:         true,
+		`{a,$X}`:      true,
+		`"$@"`:        true,
+		`"${arr[@]}"`: true,
+		`"$X"`:        false,
+		`"a$X"`:       false,
+		`"$(cat l)"`:  false,
+	}
+	for word, want := range cases {
+		scan := mustParse(t, "rm "+word)
+		rm, _ := find(scan, "rm")
+		if len(rm.Args) != 1 || rm.Args[0].Known {
+			t.Errorf("word %s: args = %+v, want one unknown word", word, rm.Args)
+			continue
+		}
+		if rm.Args[0].MaySplit != want {
+			t.Errorf("word %s: MaySplit = %v, want %v", word, rm.Args[0].MaySplit, want)
+		}
+	}
+}
+
 func TestBraceListsExpand(t *testing.T) {
 	scan := mustParse(t, "rm -rf {a,b}/c")
 	rm, _ := find(scan, "rm")

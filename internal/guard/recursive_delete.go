@@ -61,16 +61,20 @@ func (RecursiveDelete) Check(in Input) string {
 
 // rmTargets splits rm's words into its operands and says whether the delete is
 // recursive. A word before -- that is not known might be -r, so beside any other
-// operand it makes the delete count as recursive; alone it is just a name.
+// operand it makes the delete count as recursive. Alone it is just a name,
+// unless it may split into several words (an unquoted $X), which can carry a
+// flag and a target together.
 func rmTargets(args []shellscan.Arg) (targets []shellscan.Arg, recursive bool) {
 	optionsEnded := false
 	unknownBeforeEnd := false
+	splitBeforeEnd := false
 	for _, a := range args {
 		switch {
 		case optionsEnded:
 			targets = append(targets, a)
 		case !a.Known:
 			unknownBeforeEnd = true
+			splitBeforeEnd = splitBeforeEnd || a.MaySplit
 			targets = append(targets, a)
 		case !strings.HasPrefix(a.Text, "-") || a.Text == "-":
 			targets = append(targets, a)
@@ -82,7 +86,7 @@ func rmTargets(args []shellscan.Arg) (targets []shellscan.Arg, recursive bool) {
 			recursive = true
 		}
 	}
-	if unknownBeforeEnd && len(targets) > 1 {
+	if splitBeforeEnd || (unknownBeforeEnd && len(targets) > 1) {
 		recursive = true
 	}
 	return targets, recursive
@@ -92,7 +96,9 @@ func rmTargets(args []shellscan.Arg) (targets []shellscan.Arg, recursive bool) {
 func findDeleteTargets(args []shellscan.Arg) (starts []shellscan.Arg, deletes bool) {
 	expressionBegun := false
 	for _, a := range args {
-		if a.Known && a.Text == "-delete" {
+		// A word that is not known might be -delete, so find is judged as if it
+		// had been given, and refused only when its start path is not safe.
+		if !a.Known || a.Text == "-delete" {
 			deletes = true
 		}
 		if expressionBegun {

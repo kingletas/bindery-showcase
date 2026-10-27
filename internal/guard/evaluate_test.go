@@ -169,6 +169,22 @@ func TestEvaluateFailsClosedOnAPartItCannotReadStatically(t *testing.T) {
 	}
 }
 
+// An unquoted unknown word given to a shell may split into -c and a command
+// string; a quoted one is a single script file name.
+func TestEvaluateRefusesAShellGivenWordsThatMaySplit(t *testing.T) {
+	for _, command := range []string{"bash $X", "sh -x $X", "bash $(cat opts)", "sudo bash $X", `bash "$@"`} {
+		v := evaluate(t, bashCall(t, command))
+		if !v.Refused || v.Guard != ReaderName {
+			t.Errorf("%q: verdict = %+v, want a refusal by %s", command, v, ReaderName)
+		}
+	}
+	for _, command := range []string{`bash "$script"`, `bash -x "$script" arg`, "bash -c 'echo hi' $X"} {
+		if v := evaluate(t, bashCall(t, command)); v.Refused {
+			t.Errorf("%q was refused by %s: %s", command, v.Guard, v.Reason)
+		}
+	}
+}
+
 func TestEvaluateRunsTheGuardsInOrderAndStopsAtTheFirstRefusal(t *testing.T) {
 	// Both the delete guard and the push guard would refuse this line.
 	v := evaluate(t, bashCall(t, "git push -f origin main; rm -rf /"))

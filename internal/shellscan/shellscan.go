@@ -34,6 +34,11 @@ type Arg struct {
 	// Known is false when the word depends on something only the running
 	// shell knows, such as a variable or a command substitution.
 	Known bool
+	// MaySplit is set on a word that is not Known and that the shell may split
+	// into several words at run time: an unquoted variable or substitution, a
+	// brace list, or "$@". Such a word can hide a flag and its operand together.
+	// A quoted word stays one word.
+	MaySplit bool
 	// Inner lists the commands that run inside $(...), backquotes or <(...)
 	// within this word.
 	Inner []Invocation
@@ -261,6 +266,16 @@ func (s *scanner) invoke(args []Arg, ctx context) {
 
 func (s *scanner) shell(rest []Arg, ctx context) {
 	sa := ParseShellArgs(rest)
+	if !sa.HasCommand {
+		// Without -c yet, a word that may split could still bring -c and a
+		// command string with it.
+		for _, a := range rest {
+			if !a.Known && a.MaySplit {
+				s.unreadable("a shell is given words built at run time that may hold -c and a command")
+				return
+			}
+		}
+	}
 	switch {
 	case sa.HasCommand:
 		s.commandString(sa.Command, ctx)

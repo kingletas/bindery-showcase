@@ -61,7 +61,7 @@ The guards walk the parsed tree rather than the text, so a command is found wher
 
 A part of the line that depends on the running shell is not guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution is treated as unreadable, and so is a shell that takes its script from a pipe, including `bash -`, `bash /dev/stdin` and `bash /dev/fd/0`. Only `$HOME` and a leading `~` are resolved, from the configured home directory.
 
-A word that is unknown where an option could stand might be the flag that matters, so it is not skipped. In `rm $OPTS /srv/x` the unknown word may be `-rf`, and in `git push $F origin main` it may be `--force`; the guards judge those lines as if the flag were there. Downstream of a download, a shell or interpreter with an unknown operand is read as possibly reading the download.
+A word that is unknown where an option could stand might be the flag that matters, so it is not skipped. In `rm $OPTS /srv/x` the unknown word may be `-rf`, and in `git push $F origin main` it may be `--force`; the guards judge those lines as if the flag were there. An unquoted unknown word can also split into a flag and its operand at run time, so `rm $X` (with `X` holding `-rf /`) is read as a possible recursive delete, and so is the input of `xargs rm`. A quoted word such as `rm "$file"` stays one word and is not refused. A shell given an unquoted unknown word, as in `bash $X`, is unreadable, because the word may bring `-c` and a command with it. Downstream of a download, a shell or interpreter with an unknown operand is read as possibly reading the download.
 
 ### The guards
 

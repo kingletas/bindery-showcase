@@ -23,7 +23,10 @@ func TestRecursiveDeleteIsSilentOnHarmlessCommands(t *testing.T) {
 		`rm "$file"`,                         // one unknown word and no recursive flag
 		`rm -- "$file"`,                      // after --, a word is an operand
 		`rm -f "$file"`,
+		`rm "$HOME/old.log"`, // quoted, so one word that cannot split into a flag and a target
 		"find . -name '*.o' -print",
+		`find . -name "$pattern" -print`, // an unknown word, but the start path is inside the root
+		`find . -name $pattern -print`,
 		"find . -name '*.o' -delete", // the start path is the root, matches are inside
 		"find build -delete",
 		"echo build | xargs echo",
@@ -123,6 +126,29 @@ func TestRecursiveDeleteRefusesAnUnknownWordThatMayHideTheRecursiveFlag(t *testi
 		"sudo rm $OPTS /srv/x",
 		"bash -c 'rm $OPTS /srv/x'",
 		"echo /srv/x | xargs rm $OPTS",
+	)
+}
+
+// An unquoted unknown word splits at run time, so even alone it may be a flag
+// and a target ($X holding "-rf /"). A quoted one stays a single word.
+func TestRecursiveDeleteRefusesALoneUnknownWordThatMaySplit(t *testing.T) {
+	assertRefuses(t, RecursiveDelete{}, testConfig(),
+		"rm $X",
+		"rm ${X}",
+		"rm $(cat list)",
+		"rm `cat list`",
+		"rm -f $X",
+		"rm {a,$X}",
+		`rm "$@"`,
+		`rm "${files[@]}"`,
+		"rm $((1+1))",
+		"sudo rm $X",
+		"bash -c 'rm $X'",
+		"echo '-rf /' | xargs rm", // xargs splits its input into words
+		"find / $X",
+		`find /tmp "$X"`, // one word, but it may be -delete
+		`find /tmp -name x "$X"`,
+		"find /tmp -name x $X",
 	)
 }
 

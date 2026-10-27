@@ -30,11 +30,11 @@ func (s *scanner) args(w *syntax.Word) []Arg {
 // as one Arg that is not Known.
 func (s *scanner) fields(w *syntax.Word) []Arg {
 	if !s.static(w) {
-		return []Arg{{}}
+		return []Arg{{MaySplit: maySplit(w)}}
 	}
 	texts, err := expand.Fields(s.expandConfig(), w)
 	if err != nil {
-		return []Arg{{}}
+		return []Arg{{MaySplit: maySplit(w)}}
 	}
 	out := make([]Arg, len(texts))
 	for i, t := range texts {
@@ -108,6 +108,53 @@ func (s *scanner) static(w *syntax.Word) bool {
 		}
 	}
 	return ok
+}
+
+// maySplit reports whether a word can turn into several words at run time:
+// it holds an unquoted expansion or brace list, or a quoted "$@" or "${a[@]}".
+func maySplit(w *syntax.Word) bool {
+	for _, part := range w.Parts {
+		switch p := part.(type) {
+		case *syntax.ParamExp, *syntax.CmdSubst, *syntax.ArithmExp, *syntax.ProcSubst, *syntax.ExtGlob:
+			return true
+		case *syntax.Lit:
+			if strings.Contains(p.Value, "{") {
+				return true
+			}
+		case *syntax.DblQuoted:
+			for _, inner := range p.Parts {
+				if pe, ok := inner.(*syntax.ParamExp); ok && expandsToAllArguments(pe) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// expandsToAllArguments reports whether a parameter expansion is $@ or ${a[@]},
+// which produce one word per element even inside double quotes.
+func expandsToAllArguments(p *syntax.ParamExp) bool {
+	if p.Param != nil && p.Param.Value == "@" {
+		return true
+	}
+	index, ok := p.Index.(*syntax.Word)
+	if !ok {
+		return false
+	}
+	lit, ok := firstLit(index)
+	return ok && lit == "@"
+}
+
+func firstLit(w *syntax.Word) (string, bool) {
+	if len(w.Parts) != 1 {
+		return "", false
+	}
+	lit, ok := w.Parts[0].(*syntax.Lit)
+	if !ok {
+		return "", false
+	}
+	return lit.Value, true
 }
 
 func isPlainHome(p *syntax.ParamExp) bool {
