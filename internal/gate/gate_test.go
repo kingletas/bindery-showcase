@@ -2,6 +2,7 @@ package gate
 
 import (
 	"errors"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestAPassingCommitIsSilent(t *testing.T) {
 	stage(t, dir, "main.go", "package main\n")
 
 	table := parse(t, "go\t*.go\ttrue\n")
-	if findings := Evaluate(staged(t, dir), "Add main\n", true, table, ExecRunner(dir)); len(findings) != 0 {
+	if findings := Evaluate(staged(t, dir), "Add main\n", true, table, checkerFor(t, dir)); len(findings) != 0 {
 		t.Fatalf("findings = %+v, want none", findings)
 	}
 }
@@ -49,7 +50,7 @@ func TestAFailingLaneRefusesTheCommitAndSaysHow(t *testing.T) {
 	stage(t, dir, "notes.md", "notes\n")
 
 	table := parse(t, "go\t*.go\tfalse\ndocs\t*.md\ttrue\n")
-	findings := Evaluate(staged(t, dir), "Add main\n", true, table, ExecRunner(dir))
+	findings := Evaluate(staged(t, dir), "Add main\n", true, table, checkerFor(t, dir))
 
 	if len(findings) != 1 || findings[0].Name != "go" {
 		t.Fatalf("findings = %+v, want exactly the go lane", findings)
@@ -85,22 +86,22 @@ func TestACheckThatIsNotInstalledFailsItsLane(t *testing.T) {
 	stage(t, dir, "main.go", "package main\n")
 
 	table := parse(t, "go\t*.go\tno-such-tool-anywhere --flag\n")
-	findings := Evaluate(staged(t, dir), "Add main\n", true, table, ExecRunner(dir))
+	findings := Evaluate(staged(t, dir), "Add main\n", true, table, checkerFor(t, dir))
 	if len(findings) != 1 || !strings.Contains(findings[0].Reason, `"no-such-tool-anywhere --flag" could not run`) {
 		t.Fatalf("findings = %+v, want a lane failure saying the check could not run", findings)
 	}
 }
 
-func TestChecksRunAtTheRepositoryRoot(t *testing.T) {
+func TestChecksRunAtTheRootOfACopyOfTheStagedFiles(t *testing.T) {
 	dir := newRepo(t)
 	stage(t, dir, "main.go", "package main\n")
 
 	table := parse(t, "go\t*.go\ttest -f README.md\n")
-	if findings := Evaluate(staged(t, dir), "x\n", true, table, ExecRunner(dir)); len(findings) != 0 {
+	if findings := Evaluate(staged(t, dir), "x\n", true, table, checkerFor(t, dir)); len(findings) != 0 {
 		t.Fatalf("findings = %+v, want none: the check should see README.md at the root", findings)
 	}
 	missing := parse(t, "go\t*.go\ttest -f absent.txt\n")
-	if findings := Evaluate(staged(t, dir), "x\n", true, missing, ExecRunner(dir)); len(findings) != 1 {
+	if findings := Evaluate(staged(t, dir), "x\n", true, missing, checkerFor(t, dir)); len(findings) != 1 {
 		t.Fatalf("findings = %+v, want the lane to fail on a file that is not there", findings)
 	}
 }
@@ -223,7 +224,7 @@ func TestParseNameStatusRefusesTruncatedOutput(t *testing.T) {
 // process, so the test does not depend on how the standard library builds one.
 func exitError(t *testing.T) error {
 	t.Helper()
-	_, err := ExecRunner(t.TempDir())([]string{"false"})
+	err := exec.Command("false").Run()
 	if err == nil {
 		t.Fatal("false exited 0")
 	}

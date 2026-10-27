@@ -87,10 +87,12 @@ func write(t *testing.T, dir, rel, content string) {
 }
 
 // laneTable is the table the throwaway repositories use: a go lane that passes
-// while ok.txt says ok, and a docs lane that always passes.
+// while ok.txt says ok, a docs lane that always passes, and a text lane that
+// fails on trailing whitespace in the staged change.
 const laneTable = "go\t*.go\tgrep -qx ok ok.txt\n" +
 	"go\tok.txt\tgrep -qx ok ok.txt\n" +
-	"docs\t*.md\ttrue\n"
+	"docs\t*.md\ttrue\n" +
+	"text\t*.dat\tgit diff --cached --check\n"
 
 // newRepo makes a repository with one commit, the lanes table, an ok.txt that
 // says ok, and one existing test file, plus the shipped hook if hook is set.
@@ -374,6 +376,89 @@ func TestHookBlocksACommitThatBreaksALane(t *testing.T) {
 	}
 	if head(t, dir) != before {
 		t.Fatal("HEAD moved although the commit was refused")
+	}
+}
+
+// --- checks see what is being committed, not the working tree ---
+
+// A broken file that is not staged says nothing about the commit.
+func TestHookPassesACleanCommitWhileAnUnstagedFileIsBroken(t *testing.T) {
+	dir := newRepo(t, true)
+	write(t, dir, "ok.txt", "broken\n")
+	stage(t, dir, "main.go", "package main\n")
+	if out, code := commit(t, dir, "Add main"); code != 0 || out != "" {
+		t.Fatalf("exit %d, output %q; want a silent commit, since ok.txt is only broken in the work tree", code, out)
+	}
+}
+
+// A staged break is refused even when its fix is left unstaged.
+func TestHookRefusesAStagedBreakageWhoseFixIsUnstaged(t *testing.T) {
+	dir := newRepo(t, true)
+	before := head(t, dir)
+	stage(t, dir, "ok.txt", "broken\n")
+	write(t, dir, "ok.txt", "ok\n")
+	out, code := commit(t, dir, "Break it, fix it later")
+	if code == 0 || !strings.Contains(out, "bindery-gate: go: ") {
+		t.Fatalf("exit %d, output %q; want the go lane to refuse the staged content", code, out)
+	}
+	if head(t, dir) != before {
+		t.Fatal("HEAD moved although the commit was refused")
+	}
+}
+
+func TestHookChecksOnlyWhatAPathspecCommitCommits(t *testing.T) {
+	dir := newRepo(t, true)
+	stage(t, dir, "ok.txt", "broken\n")
+	stage(t, dir, "main.go", "package main\n")
+	// ok.txt is staged broken, but this commit takes main.go alone, and the
+	// committed ok.txt is still the good one.
+	if out, code := gitCode(t, dir, "commit", "-q", "-m", "Add main", "--", "main.go"); code != 0 || out != "" {
+		t.Fatalf("exit %d, output %q; want a silent commit of main.go alone", code, out)
+	}
+}
+
+func TestHooksGitCheckSeesTheCommitsOwnIndex(t *testing.T) {
+	dir := newRepo(t, true)
+	stage(t, dir, "spaced.dat", "trailing space \n")
+	out, code := commit(t, dir, "Add spaced data")
+	if code == 0 || !strings.Contains(out, "bindery-gate: text: ") {
+		t.Fatalf("exit %d, output %q; want the text lane to refuse the trailing space", code, out)
+	}
+	gitIn(t, dir, "rm", "-q", "--cached", "--", "spaced.dat")
+	stage(t, dir, "clean.dat", "fine\n")
+	if out, code := commit(t, dir, "Add clean data"); code != 0 || out != "" {
+		t.Fatalf("exit %d, output %q; want a silent commit", code, out)
+	}
+}
+
+func TestHookLeavesNoTemporaryCopyBehind(t *testing.T) {
+	dir := newRepo(t, true)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	stage(t, dir, "main.go", "package main\n")
+	if _, code := commit(t, dir, "Add main"); code != 0 {
+		t.Fatalf("a passing commit exited %d", code)
+	}
+	stage(t, dir, "ok.txt", "broken\n")
+	if _, code := commit(t, dir, "Break it"); code == 0 {
+		t.Fatal("a failing commit went through")
+	}
+	list, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("the temp directory still holds %d entries after a pass and a refusal", len(list))
+	}
+}
+
+func TestByHandTheStagedContentIsWhatIsChecked(t *testing.T) {
+	dir := newRepo(t, false)
+	write(t, dir, "ok.txt", "broken\n")
+	stage(t, dir, "main.go", "package main\n")
+	if r := runGate(t, dir, nil); r.code != 0 || r.stderr != "" {
+		t.Fatalf("got %+v, want a pass: ok.txt is only broken in the work tree", r)
 	}
 }
 

@@ -91,6 +91,15 @@ func staged(t *testing.T, dir string) []Change {
 	return changes
 }
 
+// checkerFor returns the Runner that checks dir's staged content, and closes
+// it when the test ends.
+func checkerFor(t *testing.T, dir string) Runner {
+	t.Helper()
+	c := NewChecker(dir)
+	t.Cleanup(func() { c.Close() })
+	return c.Run
+}
+
 // parse reads a table written inline in a test.
 func parse(t *testing.T, text string) Table {
 	t.Helper()

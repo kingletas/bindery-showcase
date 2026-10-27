@@ -26,16 +26,6 @@ type Finding struct {
 // and an error when it did not exit 0.
 type Runner func(argv []string) (output string, err error)
 
-// ExecRunner runs checks directly, without a shell, in dir.
-func ExecRunner(dir string) Runner {
-	return func(argv []string) (string, error) {
-		cmd := exec.Command(argv[0], argv[1:]...)
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
-		return string(out), err
-	}
-}
-
 // Evaluate judges a staged change and its commit message against the table.
 // haveMessage is false when no message was given, which is how a run by hand
 // differs from a commit-msg hook. Findings come back in a fixed order:

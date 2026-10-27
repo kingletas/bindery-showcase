@@ -72,7 +72,10 @@ func run(args []string, dir string, getenv func(string) string, stdout, stderr i
 		return broken(stderr, "staged", err)
 	}
 
-	findings := gate.Evaluate(changes, message, haveMessage, table, gate.ExecRunner(root))
+	// Checks run on a copy of the index, which Close removes on every path out.
+	checker := gate.NewChecker(root)
+	defer checker.Close()
+	findings := gate.Evaluate(changes, message, haveMessage, table, checker.Run)
 	for _, f := range findings {
 		fmt.Fprintf(stderr, "bindery-gate: %s: %s\n", f.Name, f.Reason)
 	}
