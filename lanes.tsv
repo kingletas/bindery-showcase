@@ -1,0 +1,18 @@
+# The lanes this repository's own commits go through. Three tab-separated
+# columns: lane name, path pattern, check command. A lane has one check, so
+# the rows that share a name must repeat it. See the README for the pattern
+# rules and for what a check may contain.
+#
+# lane	pattern	check
+go	*.go	make check
+go	go.mod	make check
+go	go.sum	make check
+go	Makefile	make check
+go	lanes.tsv	make check
+go	.gitignore	make check
+docs	*.md	git diff --cached --check
+docs	docs/	git diff --cached --check
+docs	LICENSE	git diff --cached --check
+workflows	.github/	git diff --cached --check
+workflows	packaging/	git diff --cached --check
+examples	examples/	go test ./cmd/...

@@ -2,7 +2,7 @@
 
 Thanks for looking.
 
-## The gate
+## The check
 
 ```bash
 make check

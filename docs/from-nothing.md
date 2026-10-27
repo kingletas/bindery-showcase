@@ -18,7 +18,7 @@ It is built in pieces, and the README says which pieces exist.
 
 ## Step 1: install it
 
-You need Go 1.27 or newer and `make`. The module has one dependency, the shell parser `mvdan.cc/sh/v3`, which Go downloads on the first build.
+You need Go 1.27 or newer, `make` and `git`. The module has one dependency, the shell parser `mvdan.cc/sh/v3`, which Go downloads on the first build.
 
 ```bash
 git clone https://github.com/kingletas/bindery && cd bindery
@@ -38,7 +38,9 @@ It checks formatting, vets and tests the whole module with the race detector. A 
 make demo
 ```
 
-This builds `bin/bindery-guard` and pipes two invented tool calls through it. The first, a recursive delete outside the workspace root, is refused: you see the guard's name, one sentence of reason and `exit 2`. The second, a recursive delete inside the root, passes in silence with `exit 0`. When the commit gate and the message bus land, this is the command that shows them too.
+This builds `bin/bindery-guard` and `bin/bindery-gate`. It pipes two invented tool calls through the guard. The first, a recursive delete outside the workspace root, is refused: you see the guard's name, one sentence of reason and `exit 2`. The second, a recursive delete inside the root, passes in silence with `exit 0`.
+
+Then it makes a throwaway git repository under a temporary directory, installs the gate as its `commit-msg` hook, and tries four commits. One passes in silence. One changes a file a lane watches so that its check fails, and is blocked with the lane's name. One edits an existing test and is refused because the message has no `Test changed:` line. The last makes that same edit with the line and goes through. The directory is removed when the demo ends. When the message bus lands, this is the command that shows it too.
 
 ## Where to go next
 

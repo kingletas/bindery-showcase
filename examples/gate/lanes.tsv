@@ -1,0 +1,6 @@
+# The table the demo repository uses. Three tab-separated columns: lane name,
+# path pattern, check command.
+#
+# lane	pattern	check
+status	status.txt	grep -qx ok status.txt
+source	*.go	gofmt -e widget_test.go
