@@ -5,7 +5,7 @@
 
 Bindery is a small, runnable showcase of a multi-session AI coding harness: guards that read every tool call before it runs, a commit gate that maps changed paths to lanes, and a message bus between named sessions. It is written in Go, on the standard library plus one shell parser, and every name, path and host in it is invented.
 
-> **Status: the guards and the commit gate are built.** The message bus is the next piece, so its row below says "not built yet" until its code and tests land.
+> **Status: the guards, the commit gate and the message bus are built**, and `make demo` shows all three on invented data.
 
 ## What it claims, and where to check
 
@@ -16,9 +16,9 @@ Each row is a claim about this showcase, not about any other system. A row gets 
 | A guard refuses a destructive command and says why | [recursive_delete.go](internal/guard/recursive_delete.go), [force_push.go](internal/guard/force_push.go), [pipe_to_shell.go](internal/guard/pipe_to_shell.go), [secrets_read.go](internal/guard/secrets_read.go) | `TestRecursiveDeleteRefusesAProtectedOrOutsidePath`, `TestForcePushRefusesAProtectedBranch`, `TestPipeToShellRefusesADownloadThatIsRun`, `TestSecretsReadRefusesAConfiguredSecretsPath`, and `TestARefusedCallExitsTwoAndNamesTheGuardOnStderr` for the runner |
 | The same guard is silent on a harmless command | the same four files | `TestRecursiveDeleteIsSilentOnHarmlessCommands`, `TestForcePushIsSilentOnHarmlessCommands`, `TestPipeToShellIsSilentOnHarmlessCommands`, `TestSecretsReadIsSilentOnHarmlessCommands`, and `TestASilentCallExitsZeroAndPrintsNothing` for the runner |
 | A guard fails closed on a line it cannot parse | [shellscan.go](internal/shellscan/shellscan.go), [guard.go](internal/guard/guard.go) | `TestLinesItCannotParseAreErrors`, `TestPartsItCannotReadAreReported`, `TestEvaluateFailsClosedOnACommandItCannotParse`, `TestEvaluateFailsClosedOnAPartItCannotReadStatically` |
-| The gate maps changed paths to lanes from a table, and refuses a commit when a lane fails | [table.go](internal/gate/table.go), [gate.go](internal/gate/gate.go), [snapshot.go](internal/gate/snapshot.go), [main.go](cmd/bindery-gate/main.go), [lanes.tsv](lanes.tsv) | `TestRouteSendsAPathToItsLanes`, `TestAFailingLaneRefusesTheCommitAndSaysHow`, `TestAPassingCommitIsSilent`, `TestEachMatchedLaneRunsOnceHoweverManyPathsMatch`, `TestAPathNoLaneClaimsIsRefusedAndNamed`, `TestAMalformedTableIsRefused`, `TestAnUnstagedBreakageDoesNotRefuseACleanStagedChange`, `TestAStagedBreakageWithItsFixUnstagedIsRefused`, `TestTheCopyIsRemovedByClose`, and `TestHookBlocksACommitThatBreaksALane`, `TestHookPassesACleanCommitWhileAnUnstagedFileIsBroken` and `TestHookRefusesAStagedBreakageWhoseFixIsUnstaged` through a real git hook |
+| The gate maps changed paths to lanes from a table, and refuses a commit when a lane fails | [table.go](internal/gate/table.go), [gate.go](internal/gate/gate.go), [snapshot.go](internal/gate/snapshot.go), [main.go](cmd/bindery-gate/main.go), [lanes.tsv](lanes.tsv) | `TestRouteSendsAPathToItsLanes`, `TestAFailingLaneRefusesTheCommitAndSaysHow`, `TestAPassingCommitIsSilent`, `TestEachMatchedLaneRunsOnceHoweverManyPathsMatch`, `TestAPathNoLaneClaimsIsRefusedAndNamed`, `TestAMalformedTableIsRefused`, `TestAnUnstagedBreakageDoesNotRefuseACleanStagedChange`, `TestAStagedBreakageWithItsFixUnstagedIsRefused`, `TestASkipWorktreeFileIsInTheCopyTheChecksRunIn`, `TestTheCopyIsRemovedByClose`, and `TestHookBlocksACommitThatBreaksALane`, `TestHookPassesACleanCommitWhileAnUnstagedFileIsBroken` and `TestHookRefusesAStagedBreakageWhoseFixIsUnstaged` through a real git hook |
 | The gate refuses an edited test that has no reason line | [rules.go](internal/gate/rules.go) | `TestAnEditedTestWithoutAReasonLineIsRefused`, `TestTheSameEditWithAReasonLinePasses`, `TestANewTestFilePassesWithoutAReasonLine`, `TestADeletedTestFileIsRefusedWithoutAReasonLine`, and `TestHookRefusesAnEditedTestWithoutAReasonLine` through a real git hook |
-| The bus delivers between two named sessions, and loses nothing when two senders write at once | not built yet | not built yet |
+| The bus delivers between two named sessions, and loses nothing when two senders write at once | [bus.go](internal/bus/bus.go), [main.go](cmd/bindery-bus/main.go) | `TestAMessageToldIsReturnedByTheReceiversWait`, `TestWaitReturnsAMessageThatArrivesAfterItStarted`, `TestWaitTimesOutWhenNothingArrives` and `TestAMessageIsNeverReturnedTwice` for delivery; `TestManySendersToOneInboxLoseNothingAndDoubleNothing`, `TestAReceiverDrainingWhileSendersSendGetsEachMessageOnce` and, with separate processes, `TestManyProcessesTellingOneInboxLoseNothingAndDoubleNothing` for the concurrent senders; `TestABadNameIsRefusedAndNothingIsWritten` and `TestWhoListsEveryNameWithAnInboxAndWhatItDid`; `TestAWaitInOneProcessReturnsAMessageToldByAnother` across two processes; `TestAWriteThatFailsPartWayLeavesTheInboxAsItWas` for a full disk, `TestWhoMarksABrokenInboxAndStillListsTheOthers` and `TestOpenRefusesASymbolicLinkAtTheBusDirectory` |
 
 ## The guard runner
 
@@ -168,7 +168,59 @@ By name: a file ending `_test.go` or `_test.py`, starting `test_`, or holding `.
 
 ### Limits
 
-The gate is a client-side check and is only as strong as its installation: a clone without the hook, or `git commit --no-verify`, skips it, which is why CI runs `make check` as well. The copy holds only tracked files, so a check that needs an untracked or ignored file, such as a generated one, fails in the gate; stage the file or generate it inside the check. A copy of a large repository takes time, though only on commits that match a lane. A process killed outright, with `kill -9` for one, cannot remove the copy. A check has no timeout and checks run one after another. The test rule reads file names and nothing else: a test kept in a file that does not look like one is not seen, and it cannot tell a good reason from a bad one, only that a reason was written. A copied file is reported by git as an added file, and a mode change alone is a modification.
+The gate is a client-side check and is only as strong as its installation: a clone without the hook, or `git commit --no-verify`, skips it, which is why CI runs `make check` as well. The copy holds only tracked files, so a check that needs an untracked or ignored file, such as a generated one, fails in the gate; stage the file or generate it inside the check. The copy holds every file the index holds, including those a sparse checkout leaves out of the work tree. A copy of a large repository takes time, though only on commits that match a lane. A process killed outright, with `kill -9` for one, cannot remove the copy. A check has no timeout and checks run one after another. The test rule reads file names and nothing else: a test kept in a file that does not look like one is not seen, and it cannot tell a good reason from a bad one, only that a reason was written. A copied file is reported by git as an added file, and a mode change alone is a modification.
+
+## The message bus
+
+`bindery-bus` lets named sessions on one machine send each other messages. There is no server: the bus is a directory with one inbox file per name, and every change to an inbox happens under an exclusive `flock` on it. It uses the standard library only.
+
+| Command | Does |
+|---|---|
+| `bindery-bus tell FROM TO TEXT...` | Appends one message to TO's inbox. The words of the text are joined with single spaces. |
+| `bindery-bus wait [--timeout DURATION] NAME` | Blocks until NAME's inbox holds an unread message, prints the oldest one as `#SEQ FROM: TEXT`, and marks it read. The default timeout is `30s`, `0s` looks once and does not wait, and the flag goes before the name. |
+| `bindery-bus who` | Lists every name that has an inbox, with its unread count and when it last told and last waited. A name whose files cannot be read is listed as `broken: line 2 is not a message` (or `broken: NAME.state is not readable`), and the other names are listed as usual. |
+
+```bash
+bin/bindery-bus tell juniper cobalt "the build is green, ship it"
+bin/bindery-bus wait --timeout 10s cobalt     # prints: #1 juniper: the build is green, ship it
+```
+
+### Storage
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `BINDERY_BUS_DIR` | The bus directory, made with mode `0700` if it is missing | `bindery-bus-<uid>` inside the system temporary directory |
+
+For each name there are two files in that directory, both mode `0600`:
+
+- `NAME.jsonl` is the inbox. One message is one JSON line with its sequence number, the time, the sender, the receiver and the text, and the sequence numbers count up from 1 in each inbox.
+- `NAME.state` is a small JSON file holding the sequence number of the last message a wait returned, and the times the name last told and last waited. It is replaced whole through a temporary file and a rename.
+
+```
+{"seq":1,"time":"2030-01-02T03:04:05.678Z","from":"juniper","to":"cobalt","text":"the build is green, ship it"}
+```
+
+**The lock is what keeps senders from losing each other's messages.** To append, a sender opens the inbox, takes `flock(LOCK_EX)`, reads the last sequence number, writes one whole line and closes the file, which releases the lock. If the write fails or is cut short, the sender truncates the inbox back to the size it had before, still under the lock, and reports the failure. Two senders cannot read the same last number, so no sequence number is used twice and no line is cut in half by another. A wait takes the same lock to find the oldest message past the stored read position and to move that position, which is why two waiters on one name each get different messages and a message is never returned twice. The sender's own record is updated after the receiver's inbox is released, never while it is held, so two sessions telling each other cannot wait on each other's locks.
+
+**A name is a file name, so it is checked first.** A name is 1 to 32 lower case letters, digits, hyphens or underscores, starting with a letter or a digit. `..`, `a/b`, an empty name, a dot, an upper case letter and a leading hyphen are refused before any file is touched. A message is refused when it is empty, not valid UTF-8, or longer than 64 KiB.
+
+**The directory is checked too.** Anyone who can write to it can send as any name, so a directory that another user owns, or that group or others can reach, is refused with a message naming the mode. A symbolic link at the bus directory is refused, not followed, because the checks would be made on its target and the link can be pointed elsewhere later; a link higher up the path is only a way of reaching the directory and is fine.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | The command did its job. A `wait` that printed a message exits 0. |
+| 1 | A `wait` timed out with nothing to return. One line goes to standard error, and nothing to standard output. |
+| 2 | The command could not do its job: a name is not valid, the message is refused, the directory cannot be used, an inbox holds a line that is not a message, or the arguments are wrong, in which case the usage goes to standard error. |
+
+### Limits
+
+- **POSIX only.** `flock` and the ownership check are Linux and macOS system calls, and the package does not build on Windows.
+- **A wait polls.** It looks at its inbox every 50 milliseconds and does not get a notification, so a message can take that long to be seen and an idle wait costs a lock and a read twenty times a second.
+- **Delivery is at most once.** A message is marked read before the waiting command prints it, so a wait that dies in between loses that message and does not return it twice.
+- **Inboxes are never pruned**, and every command reads the whole inbox it works on, so cost grows with the number of messages kept. Delete a name's two files to clear it.
+- **A line that is not a message refuses the inbox**, with its file and line number, rather than being skipped. `tell` and `wait` on that name exit 2, and `who` lists it as `broken` and carries on with the others. A failed append, such as one on a full disk, is cut back to the size the inbox had, so the bus does not make such a line itself; one can still come from a process killed outright in the middle of a write, or from an edit by hand. To recover, when no session is using that name, open `NAME.jsonl`, delete the line the error names (a cut-short append is the last line), and save. The messages before it are untouched and the next message continues their numbering. A `NAME.state` that cannot be read is recovered by deleting that file, after which every message still in the inbox counts as unread.
+- **The names are not authenticated.** `FROM` is whatever the sender typed, and any process of the same user can send as any name. The bus is a courtesy between cooperating sessions on one machine, not a boundary between them.
+- **One machine.** `flock` is advisory and not reliable over a network file system, so keep the directory on a local disk. Times are the local clock of whoever wrote them.
 
 ## Run it
 
@@ -176,10 +228,17 @@ You need Go 1.27 or newer, `make` and `git`. The first build downloads one modul
 
 ```bash
 make check   # gofmt (any difference fails), go vet ./..., go test -race ./...
-make demo    # builds bin/bindery-guard and bin/bindery-gate and shows both on invented data
+make demo    # builds bin/bindery-guard, bin/bindery-gate and bin/bindery-bus and shows all three on invented data
 ```
 
-`make demo` shows one call refused with its reason and one passing in silence, then the commit gate in a throwaway repository under a temporary directory that the demo removes: a commit that breaks a lane is blocked, an edited test with no reason line is refused, and the same edit with the line goes through. The message bus joins it in the last piece.
+`make demo` shows, in order:
+
+1. a destructive command refused by a guard, with its reason
+2. a harmless command that the same guard lets through in silence
+3. the commit gate in a throwaway repository under a temporary directory: a commit that breaks a lane is blocked, an edited test with no reason line is refused, and the same edit with the line goes through
+4. two invented sessions on a bus in a temporary directory: `cobalt` waits in the background, `juniper` tells it a message, and the wait prints it. A second wait finds nothing, and `who` lists both names
+
+Both temporary directories are removed when the demo ends, and nothing in it needs the network.
 
 [docs/from-nothing.md](docs/from-nothing.md) walks through it from a fresh clone.
 
@@ -187,10 +246,11 @@ make demo    # builds bin/bindery-guard and bin/bindery-gate and shows both on i
 
 Bindery is a smaller re-implementation of a private internal system, written fresh for this repository. It is never a copy of that system, and the private one does more. It has, among other things:
 
-- a persistent store behind its sessions
+- a persistent store behind its sessions. The bus here is a directory of inbox files and nothing more: no database, no history beyond the files, and no search
 - many more guards, and many more gate lanes than the table here
 - persona and memory handling for the sessions
-- chat and forge bridges that carry messages in and out
+- chat and forge bridges that carry messages in and out. The bus here has no poller for a chat service or a code host, and nothing outside the machine can reach it
+- quiet tells and other delivery modes. Every `tell` here is the same kind of message, and a `wait` returns it
 
 The showcase keeps one small, honest version of three ideas from it, and nothing more. Where this README says what the showcase does, it means this code, and it makes no claim about what the private system does.
 

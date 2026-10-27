@@ -72,7 +72,9 @@ func (c *Checker) snapshot() error {
 	}
 	c.dir = dir
 	// The prefix must end in a slash, or git treats it as part of a file name.
-	_, err = git(c.root, "checkout-index", "--all", "--prefix="+dir+string(filepath.Separator))
+	// --ignore-skip-worktree-bits keeps a sparse checkout from leaving files out
+	// of the copy that the index, and so the commit, holds.
+	_, err = git(c.root, "checkout-index", "--all", "--ignore-skip-worktree-bits", "--prefix="+dir+string(filepath.Separator))
 	return err
 }
 

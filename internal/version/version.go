@@ -1,6 +1,5 @@
-// Package version holds the one string that names this build. It is the
-// placeholder the first pieces of the repository stand on; the guards, the
-// commit gate and the message bus arrive in packages of their own.
+// Package version holds the one string that names this build. The guards, the
+// commit gate and the message bus each print it for --version.
 package version
 
 // Version is the release the code claims to be. It reads "dev" until a tag is cut.
