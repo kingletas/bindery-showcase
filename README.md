@@ -3,13 +3,15 @@
 [![CI](https://github.com/kingletas/bindery-showcase/actions/workflows/ci.yml/badge.svg)](https://github.com/kingletas/bindery-showcase/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Bindery is a small, runnable showcase of the safety nets around a team of AI coding sessions: guards that read each tool call an agent's pre-tool-use hook hands them and refuse the dangerous ones before they run, a commit gate that sends each changed file to the checks (lanes) that cover it, and a message bus between named sessions. It is written in Go, on the standard library plus one shell parser, and every name, path and host in its code, tests and examples is invented.
+Bindery is a small, runnable showcase of the safety nets around a team of AI coding sessions. There are three of them. Guards read each tool call an agent's pre-tool-use hook hands them, and refuse the dangerous ones before they run. A commit gate sends each changed file to the checks that cover it, which this README calls lanes. And a message bus lets named sessions talk to each other.
+
+It's written in Go, on the standard library plus one shell parser. Every name, path and host in its code, tests and examples is invented.
 
 > **Status: the guards, the commit gate and the message bus are built**, and `make demo` shows all three on invented data.
 
 ## What it claims, and where to check
 
-Each row is a claim about this showcase, not about any other system. A row gets a file and a test when the code exists, and not before.
+Every row is a claim about this showcase and no other system. A row only gets a file and a test once the code exists.
 
 | Claim | File | Test |
 |---|---|---|
@@ -42,7 +44,7 @@ Other fields, such as a session identifier, are ignored. The [examples](examples
 | 0 | Every guard is silent. Nothing is printed. |
 | 2 | The call is blocked. A guard refused it, or the runner could not do its job, for example because it was started with an argument it does not take. One line goes to standard error: the guard's name and one sentence of reason, or the usage text. |
 
-There is no other non-zero code, because a pre-tool-use hook blocks only on 2 and lets a call through on any other exit. A call that is not one JSON object of the shape above is refused too, as is one whose shell command cannot be read, so a hook that invokes `bindery-guard` fails closed. A refusal looks like this:
+There's no other non-zero code, because a pre-tool-use hook blocks only on 2 and lets a call through on any other exit. A call that isn't one JSON object of the shape above is refused too, and so is one whose shell command can't be read. That way a hook that runs `bindery-guard` fails closed. A refusal looks like this:
 
 ```
 bindery-guard: recursive-delete: Recursive delete of "/srv/demo/data" is refused, because it is outside the workspace root.
@@ -50,9 +52,9 @@ bindery-guard: recursive-delete: Recursive delete of "/srv/demo/data" is refused
 
 ### How the shell is read
 
-Shell is parsed with [mvdan.cc/sh](https://github.com/mvdan/sh) in its bash dialect, never with a hand-written tokeniser, and anything it cannot parse is refused with a reason that says the guard could not read the command. That includes syntax only zsh accepts, such as `${(k)map}`.
+Shell is parsed with [mvdan.cc/sh](https://github.com/mvdan/sh) in its bash dialect, never with a hand-written tokeniser. Anything it can't parse is refused, with a reason saying the guard couldn't read the command. That includes syntax only zsh accepts, such as `${(k)map}`.
 
-The guards walk the parsed tree rather than the text, so a command is found wherever it sits:
+The guards walk the parsed tree rather than the text, so they find a command wherever it sits:
 
 - after `&&`, `||`, `;` or `&`, and inside `if`, `for`, `case`, functions, subshells and blocks
 - inside `$(...)`, backquotes and `<(...)`, and in a pipeline
@@ -62,11 +64,19 @@ The guards walk the parsed tree rather than the text, so a command is found wher
 - behind any command the scanner does not know, such as `flock`, `watch`, `parallel`, `systemd-run`, `script -c`, `su -c`, `runuser`, `chroot` or `busybox`
 - written as `/bin/rm`, `\rm`, `'rm'` or the dollar-quoted `$'rm'` and `$'\x72m'`, since words are expanded the way a shell would
 
-The last two bullets are one rule, not a list of runners. A command that is neither a tool a guard reads nor on a short list of words-only commands (`echo`, `printf`, `ls`, `man` and the like) is read as a possible runner. Its words are searched for the first one that names a tool the guards read, such as `rm`, `find`, `git`, a shell or an interpreter, and the rest of the line is read from there as the command it runs. A word holding spaces or operators is read as a command string. A words-only command ends the search, so `echo rm -rf /` and `flock lock echo rm -rf /` stay silent. The rule errs toward refusing: `ssh host rm -rf /tmp/x` is judged as a local delete.
+Those last two bullets are really one rule.
 
-A part of the line that depends on the running shell is not guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution is treated as unreadable, and so is a shell that takes its script from a pipe, including `bash -`, `bash /dev/stdin` and `bash /dev/fd/0`. Only `$HOME` and a leading `~` are resolved, from the configured home directory.
+A command that isn't a tool a guard reads, and isn't on a short list of words-only commands (`echo`, `printf`, `ls`, `man` and the like), is read as a possible runner. Its words are searched for the first one that names a tool the guards read, such as `rm`, `find`, `git`, a shell or an interpreter, and the rest of the line is read from there as the command it runs. A word holding spaces or operators is read as a command string.
 
-A word that is unknown where an option could stand might be the flag that matters, so it is not skipped. In `rm $OPTS /srv/x` the unknown word may be `-rf`, and in `git push $F origin main` it may be `--force`; the guards judge those lines as if the flag were there. An unquoted unknown word can also split into a flag and its operand at run time, so `rm $X` (with `X` holding `-rf /`) is read as a possible recursive delete, and so is the input of `xargs rm`. A quoted word such as `rm "$file"` stays one word and is not refused. A shell given an unquoted unknown word, as in `bash $X`, is unreadable, because the word may bring `-c` and a command with it. Downstream of a download, a shell or interpreter with an unknown operand is read as possibly reading the download.
+A words-only command ends the search, so `echo rm -rf /` and `flock lock echo rm -rf /` stay silent. The rule errs toward refusing: `ssh host rm -rf /tmp/x` gets judged as a local delete.
+
+Anything on the line that depends on the running shell isn't guessed at. A command name, a `-c` string, an `eval` text or a delete target built from a variable or a command substitution counts as unreadable. So does a shell that takes its script from a pipe, including `bash -`, `bash /dev/stdin` and `bash /dev/fd/0`. The only things resolved are `$HOME` and a leading `~`, from the configured home directory.
+
+An unknown word where an option could stand might be the flag that matters, so it isn't skipped. In `rm $OPTS /srv/x` that word may be `-rf`, and in `git push $F origin main` it may be `--force`, so the guards judge those lines as if the flag were there.
+
+An unquoted unknown word can also split into a flag and its operand at run time. So `rm $X`, with `X` holding `-rf /`, is read as a possible recursive delete, and so is the input of `xargs rm`. A quoted word such as `rm "$file"` stays one word and isn't refused.
+
+A shell given an unquoted unknown word, as in `bash $X`, is unreadable, because the word may bring `-c` and a command along with it. And downstream of a download, a shell or interpreter with an unknown operand is read as possibly reading the download.
 
 ### The guards
 
@@ -77,11 +87,11 @@ A word that is unknown where an option could stand might be the flag that matter
 | `pipe-to-shell` | `curl` or `wget` piped into a shell or another interpreter, or handed to one as `-c "$(...)"` or `<(...)` | downloads piped into `jq`, `tee` or `grep`, and interpreters given a script file |
 | `secrets-read` | a `Read` call, or a command such as `cat` or `cp`, on a file whose name matches a secrets pattern | template files such as `.env.example`, listings, and paths known only at run time |
 
-The first refusal wins. The order is the one in the table.
+The first refusal wins, in the order of the table.
 
 ### Configuration
 
-Every value has a default and is overridden by an environment variable. Nothing is read from a file, and no default names a path on any machine.
+Every value has a default, and an environment variable overrides it. Nothing is read from a file, and no default names a path on any machine.
 
 | Variable | Meaning | Default |
 |---|---|---|
@@ -92,16 +102,20 @@ Every value has a default and is overridden by an environment variable. Nothing 
 
 ### Limits
 
-The guards read the command line and nothing else: they do not follow symlinks, expand globs against the disk, know aliases or functions defined outside the command line, or see what a script file will do. The wrappers that are looked through by name are a fixed list; any other command is read by the runner rule above, which depends on the runner's command appearing among its words. `secrets-read` is a tripwire for the obvious read and not a boundary. A forced push that does not name its branch is refused, because the current branch is not visible from the command line, so say which branch you mean.
+The guards read the command line and nothing else. They don't follow symlinks, expand globs against the disk, know aliases or functions defined outside the command line, or see what a script file will do.
+
+The wrappers they look through by name are a fixed list. Any other command goes through the runner rule above, which only works when the runner's command shows up among its words. `secrets-read` is a tripwire for the obvious read and not a boundary.
+
+A forced push that doesn't name its branch is refused, because the current branch isn't visible from the command line. Say which branch you mean.
 
 ## The commit gate
 
-`bindery-gate` sends the paths a commit changes to lanes, runs each matched lane's check, and refuses the commit when one fails. It is a small gate: the table this repository ships holds four lanes, and the idea is the part to look at, not the count. It uses the standard library only and calls `git` as a subprocess.
+`bindery-gate` sends the paths a commit changes to lanes, runs each matched lane's check, and refuses the commit when one fails. It's a small gate. The table this repository ships holds four lanes, and the idea is the part worth looking at, more than the count. It uses only the standard library, and calls `git` as a subprocess.
 
 It does three things:
 
 1. **It reads the staged change** with `git diff --cached`, as paths with a status: added, modified, deleted, renamed or type-changed. Run from a commit hook, git points that command at the commit's own index, so a commit with a pathspec (`git commit -- notes.md`) is judged on `notes.md` and not on everything staged.
-2. **It sends each path to its lanes** from a table and runs each matched lane's check once, however many paths matched it. A deleted path is routed too, and a renamed file is routed by both its old and new path. **A check runs on what is being committed, not on the working tree.** Before the first check the gate writes the index into a fresh temporary directory with `git checkout-index --all`, runs every check there, and removes the directory on every way out, a failing check and a panic included. A broken file that is not staged cannot refuse a clean commit, and a broken staged file cannot pass because its fix was left unstaged. Nothing is written when no lane matches.
+2. **It sends each path to its lanes** from a table and runs each matched lane's check once, however many paths matched it. A deleted path is routed too, and a renamed file is routed by both its old and new path. **A check runs on what is being committed, not on the working tree.** Before the first check the gate writes the index into a fresh temporary directory with `git checkout-index --all`, runs every check there, and removes the directory on every way out, a failing check and a panic included. A broken file that isn't staged can't refuse a clean commit, and a broken staged file can't pass because its fix was left unstaged. Nothing is written when no lane matches.
 3. **It applies one rule across lanes.** A commit that modifies, deletes or renames away an existing test file must carry a line `Test changed: <why>` in its message. A new test file needs no line. The reason is the point: a test whose expectation moves without a reason is how a regression gets a quiet pass, and the line puts the reason in the history next to the change.
 
 ### The lanes table
@@ -123,9 +137,11 @@ docs	*.md	git diff --cached --check
 
 Blank lines and lines that start with `#` are skipped. [lanes.tsv](lanes.tsv) is the table for this repository, and a test keeps it readable.
 
-**A check is run without a shell.** It is split on whitespace and run as `argv`, so what the table says is what runs: there is no quoting to get wrong and no row that turns into a script. A row that contains shell syntax (quotes, `$`, `|`, `&`, `;`, `<`, `>`, parentheses, braces, `*`, `?` or a backslash) or starts with an assignment such as `CGO_ENABLED=0` is refused, because without a shell it would run as plain words and not do what it looks like. If a check needs a pipeline, put the pipeline in a script and name the script.
+**A check runs without a shell.** It's split on whitespace and run as `argv`, so what the table says is exactly what runs. There's no quoting to get wrong, and no row can turn into a script.
 
-**A path no lane claims is refused.** The alternative, listing it as ungated and letting the commit through, would make every new kind of file a quiet hole in the gate. The refusal names the paths and the fix is a row in the table. **A table that cannot be read is refused whole**, with the line and the reason, because a lane that silently went missing leaves its paths unchecked.
+A row that contains shell syntax (quotes, `$`, `|`, `&`, `;`, `<`, `>`, parentheses, braces, `*`, `?` or a backslash), or that starts with an assignment such as `CGO_ENABLED=0`, is refused. Without a shell it would run as plain words and wouldn't do what it looks like. If a check needs a pipeline, put the pipeline in a script and name the script.
+
+**A path no lane claims is refused.** Letting it through as ungated would turn every new kind of file into a quiet hole in the gate. The refusal names the paths, and the fix is a row in the table. **A table that can't be read is refused whole**, with the line and the reason, because a lane that silently went missing would leave its paths unchecked.
 
 ### Running it
 
@@ -160,7 +176,7 @@ bindery-gate: test-changed: The existing test "widget_test.go" is changed, and t
 bindery-gate: go: The check "make check" exited with status 2, saying: FAIL.
 ```
 
-The lines come in a fixed order: unclaimed paths, the test rule, then the failing lanes in table order. Every failing lane is reported, not only the first.
+The lines come in a fixed order: unclaimed paths, the test rule, then the failing lanes in table order. Every failing lane is reported, not just the first.
 
 ### What counts as a test file
 
@@ -168,11 +184,16 @@ By name: a file ending `_test.go` or `_test.py`, starting `test_`, or holding `.
 
 ### Limits
 
-The gate is a client-side check and is only as strong as its installation: a clone without the hook, or `git commit --no-verify`, skips it, which is why CI runs `make check` as well. The copy holds only tracked files, so a check that needs an untracked or ignored file, such as a generated one, fails in the gate; stage the file or generate it inside the check. The copy holds every file the index holds, including those a sparse checkout leaves out of the work tree. A copy of a large repository takes time, though only on commits that match a lane. A process killed outright, with `kill -9` for one, cannot remove the copy. A check has no timeout and checks run one after another. The test rule reads file names and nothing else: a test kept in a file that does not look like one is not seen, and it cannot tell a good reason from a bad one, only that a reason was written. A copied file is reported by git as an added file, and a mode change alone is a modification.
+- **It's only as strong as its installation.** The gate is a client-side check, so a clone without the hook, or `git commit --no-verify`, skips it. That's why CI runs `make check` as well.
+- **The copy holds only tracked files.** A check that needs an untracked or ignored file, such as a generated one, fails in the gate, so stage the file or generate it inside the check. The copy does hold every file the index holds, including the ones a sparse checkout leaves out of the work tree.
+- **Copying takes time** on a large repository, though only on commits that match a lane. A process killed outright, with `kill -9` for one, can't remove the copy.
+- **A check has no timeout**, and checks run one after another.
+- **The test rule reads file names and nothing else.** A test kept in a file that doesn't look like one isn't seen. And the rule can't tell a good reason from a bad one, only that a reason was written.
+- **Git decides what a change is.** A copied file is reported as an added file, and a mode change alone is a modification.
 
 ## The message bus
 
-`bindery-bus` lets named sessions on one machine send each other messages. There is no server: the bus is a directory with one inbox file per name, and every change to an inbox happens under an exclusive `flock` on it. It uses the standard library only.
+`bindery-bus` lets named sessions on one machine send each other messages. There's no server. The bus is a directory with one inbox file per name, and every change to an inbox happens under an exclusive `flock` on it. It uses only the standard library.
 
 | Command | Does |
 |---|---|
@@ -200,11 +221,17 @@ For each name there are two files in that directory, both mode `0600`:
 {"seq":1,"time":"2030-01-02T03:04:05.678Z","from":"juniper","to":"cobalt","text":"the build is green, ship it"}
 ```
 
-**The lock is what keeps senders from losing each other's messages.** To append, a sender opens the inbox, takes `flock(LOCK_EX)`, reads the last sequence number, writes one whole line and closes the file, which releases the lock. If the write fails or is cut short, the sender truncates the inbox back to the size it had before, still under the lock, and reports the failure. Two senders cannot read the same last number, so no sequence number is used twice and no line is cut in half by another. A wait takes the same lock to find the oldest message past the stored read position and to move that position, which is why two waiters on one name each get different messages and a message is never returned twice. The sender's own record is updated after the receiver's inbox is released, never while it is held, so two sessions telling each other cannot wait on each other's locks.
+**The lock is what keeps senders from losing each other's messages.** To append, a sender opens the inbox, takes `flock(LOCK_EX)`, reads the last sequence number, writes one whole line and closes the file, which releases the lock. If the write fails or is cut short, the sender truncates the inbox back to the size it had before, still under the lock, and reports the failure.
 
-**A name is a file name, so it is checked first.** A name is 1 to 32 lower case letters, digits, hyphens or underscores, starting with a letter or a digit. `..`, `a/b`, an empty name, a dot, an upper case letter and a leading hyphen are refused before any file is touched. A message is refused when it is empty, not valid UTF-8, or longer than 64 KiB.
+Two senders can't read the same last number, so no sequence number is used twice and no line gets cut in half by another. A wait takes the same lock to find the oldest message past the stored read position and to move that position. That's why two waiters on one name each get different messages, and why a message is never returned twice.
 
-**The directory is checked too.** Anyone who can write to it can send as any name, so a directory that another user owns, or that group or others can reach, is refused with a message naming the mode. A symbolic link at the bus directory is refused, not followed, because the checks would be made on its target and the link can be pointed elsewhere later; a link higher up the path is only a way of reaching the directory and is fine.
+The sender's own record is updated after the receiver's inbox is released, never while it's held, so two sessions telling each other can't end up waiting on each other's locks.
+
+**A name is a file name, so it's checked first.** A name is 1 to 32 lower case letters, digits, hyphens or underscores, starting with a letter or a digit. `..`, `a/b`, an empty name, a dot, an upper case letter and a leading hyphen are refused before any file is touched. A message is refused when it is empty, not valid UTF-8, or longer than 64 KiB.
+
+**The directory is checked too.** Anyone who can write to it can send as any name, so a directory that another user owns, or that group or others can reach, is refused with a message naming the mode.
+
+A symbolic link at the bus directory is refused rather than followed, because the checks would be made on its target and the link could be pointed somewhere else later. A link higher up the path is just a way of reaching the directory, and that's fine.
 
 | Exit code | Meaning |
 |---|---|
@@ -215,7 +242,7 @@ For each name there are two files in that directory, both mode `0600`:
 ### Limits
 
 - **POSIX only.** `flock` and the ownership check are Linux and macOS system calls, and the package does not build on Windows.
-- **A wait polls.** It looks at its inbox every 50 milliseconds and does not get a notification, so a message can take that long to be seen and an idle wait costs a lock and a read twenty times a second.
+- **A wait polls.** It looks at its inbox every 50 milliseconds and doesn't get a notification, so a message can take that long to be seen and an idle wait costs a lock and a read twenty times a second.
 - **Delivery is at most once.** A message is marked read before the waiting command prints it, so a wait that dies in between loses that message and does not return it twice.
 - **Inboxes are never pruned**, and every command reads the whole inbox it works on, so cost grows with the number of messages kept. Delete a name's two files to clear it.
 - **A line that is not a message refuses the inbox**, with its file and line number, rather than being skipped. `tell` and `wait` on that name exit 2, and `who` lists it as `broken` and carries on with the others. A failed append, such as one on a full disk, is cut back to the size the inbox had, so the bus does not make such a line itself; one can still come from a process killed outright in the middle of a write, or from an edit by hand. To recover, when no session is using that name, open `NAME.jsonl`, delete the line the error names (a cut-short append is the last line), and save. The messages before it are untouched and the next message continues their numbering. A `NAME.state` that cannot be read is recovered by deleting that file, after which every message still in the inbox counts as unread.
@@ -244,7 +271,7 @@ Both temporary directories are removed when the demo ends, and nothing in it nee
 
 ## What this is not
 
-Bindery is a smaller re-implementation of a private internal system, written fresh for this repository. It is never a copy of that system, and the private one does more. It has, among other things:
+Bindery is a smaller re-implementation of a private internal system, written fresh for this repository. It isn't a copy of that system, and the private one does more. Among other things, it has:
 
 - a persistent store behind its sessions. The bus here is a directory of inbox files and nothing more: no database, no history beyond the files, and no search
 - many more guards, and many more gate lanes than the table here
@@ -252,7 +279,7 @@ Bindery is a smaller re-implementation of a private internal system, written fre
 - chat and forge bridges that carry messages in and out. The bus here has no poller for a chat service or a code host, and nothing outside the machine can reach it
 - quiet tells and other delivery modes. Every `tell` here is the same kind of message, and a `wait` returns it
 
-The showcase keeps one small, honest version of three ideas from it, and nothing more. Where this README says what the showcase does, it means this code, and it makes no claim about what the private system does.
+The showcase keeps one small, honest version of three ideas from it, and nothing more. Where this README says what the showcase does, it means this code. It makes no claim about what the private system does.
 
 ## Who builds it
 
