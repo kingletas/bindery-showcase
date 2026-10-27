@@ -65,6 +65,22 @@ func TestAStagedBreakageWithItsFixUnstagedIsRefused(t *testing.T) {
 	}
 }
 
+// A sparse checkout leaves a tracked file out of the work tree and marks it
+// skip-worktree, and the copy must still hold it, since it is in the index.
+func TestASkipWorktreeFileIsInTheCopyTheChecksRunIn(t *testing.T) {
+	dir := okRepo(t)
+	gitIn(t, dir, "update-index", "--skip-worktree", "ok.txt")
+	if err := os.Remove(filepath.Join(dir, "ok.txt")); err != nil {
+		t.Fatal(err)
+	}
+	stage(t, dir, "main.go", "package main\n")
+
+	findings := Evaluate(staged(t, dir), "Add main\n", true, parse(t, okTable), checkerFor(t, dir))
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v, want none: ok.txt is in the index although the work tree lacks it", findings)
+	}
+}
+
 func TestAnUntrackedFileIsNotInTheCopyTheChecksRunIn(t *testing.T) {
 	dir := okRepo(t)
 	write(t, dir, "untracked.txt", "here\n")
