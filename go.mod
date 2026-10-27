@@ -1,4 +1,4 @@
-module github.com/kingletas/bindery
+module github.com/kingletas/bindery-showcase
 
 go 1.27
 

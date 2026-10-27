@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kingletas/bindery/internal/shellscan"
+	"github.com/kingletas/bindery-showcase/internal/shellscan"
 )
 
 // testConfig is an invented machine: a home directory, one workspace root

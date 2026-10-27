@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kingletas/bindery/internal/shellscan"
+	"github.com/kingletas/bindery-showcase/internal/shellscan"
 )
 
 // RecursiveDelete refuses rm -r and find -delete aimed at a protected path: the

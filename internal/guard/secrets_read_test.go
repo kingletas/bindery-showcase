@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kingletas/bindery/internal/shellscan"
+	"github.com/kingletas/bindery-showcase/internal/shellscan"
 )
 
 func TestSecretsReadIsSilentOnHarmlessCommands(t *testing.T) {
