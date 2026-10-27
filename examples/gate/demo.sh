@@ -56,7 +56,7 @@ printf 'ok\n' > status.txt
 git add -- status.txt
 echo
 
-echo "== An edited test with no reason line (expect a refusal)"
+echo "== An edited test with no reason line (expect a refusal: a test loosened without a reason is how a regression gets a quiet pass)"
 printf 'package widget\n\n// the expectation moved\n' > widget_test.go
 git add -- widget_test.go
 echo '$ git commit -m "Loosen the widget test"'
