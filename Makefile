@@ -32,7 +32,26 @@ vet: ## Run go vet over every package
 test: ## Run the tests with the race detector
 	go test -race ./...
 
+.PHONY: build
+build: ## Build the guard runner into bin/
+	go build -o bin/bindery-guard ./cmd/bindery-guard
+
+# The demo pipes two invented tool calls through the runner on an invented
+# machine (a home directory and one workspace root that exist nowhere), so it
+# needs no network and reads no real path. It fails if either call gets the
+# wrong exit code.
+DEMO_ENV := HOME=/home/demo BINDERY_WORKSPACE_ROOTS=/srv/demo/app
+
 .PHONY: demo
-demo: ## Placeholder: the demo arrives with the later pieces
-	@echo "The demo arrives with the guards, the commit gate and the message bus."
-	@echo "Nothing is built yet beyond the scaffold; see the README table."
+demo: build ## Pipe two invented tool calls through the guard runner
+	@echo "== A destructive command, outside the workspace root (expect a refusal)"
+	@cat examples/refused.json
+	@code=0; env $(DEMO_ENV) bin/bindery-guard < examples/refused.json || code=$$?; \
+	echo "exit $$code"; test "$$code" -eq 2
+	@echo
+	@echo "== A harmless command, inside the workspace root (expect silence)"
+	@cat examples/silent.json
+	@code=0; env $(DEMO_ENV) bin/bindery-guard < examples/silent.json || code=$$?; \
+	echo "exit $$code"; test "$$code" -eq 0
+	@echo
+	@echo "The commit gate and the message bus arrive in the later pieces."

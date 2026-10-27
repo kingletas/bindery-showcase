@@ -18,7 +18,7 @@ It is built in pieces, and the README says which pieces exist.
 
 ## Step 1: install it
 
-You need Go 1.27 or newer and `make`. The module has no dependencies yet, so there is nothing to download.
+You need Go 1.27 or newer and `make`. The module has one dependency, the shell parser `mvdan.cc/sh/v3`, which Go downloads on the first build.
 
 ```bash
 git clone https://github.com/kingletas/bindery && cd bindery
@@ -38,7 +38,7 @@ It checks formatting, vets and tests the whole module with the race detector. A 
 make demo
 ```
 
-For now this prints one line saying the demo arrives with the later pieces. When the guards, the commit gate and the message bus land, this is the command that shows all three working.
+This builds `bin/bindery-guard` and pipes two invented tool calls through it. The first, a recursive delete outside the workspace root, is refused: you see the guard's name, one sentence of reason and `exit 2`. The second, a recursive delete inside the root, passes in silence with `exit 0`. When the commit gate and the message bus land, this is the command that shows them too.
 
 ## Where to go next
 

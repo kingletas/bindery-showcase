@@ -10,7 +10,7 @@ make check
 
 That's everything a commit has to pass: gofmt (any difference fails), `go vet ./...` and `go test -race ./...`. CI runs exactly this target and nothing else.
 
-You need Go 1.27 or newer and nothing else. The module uses the standard library only for now, so the tests need no network and no credentials.
+You need Go 1.27 or newer and nothing else. The module depends on `mvdan.cc/sh/v3` alone and otherwise uses the standard library. The first build downloads that one module, and after that the tests need no network and no credentials.
 
 ## What a change should look like
 

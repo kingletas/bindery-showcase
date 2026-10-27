@@ -16,7 +16,7 @@ updates:
         patterns: ["*"]
     open-pull-requests-limit: 2
 
-  # Go modules: there are none yet, and the first one arrives with the guards.
+  # Go modules: the shell parser is the one dependency, and this keeps it current.
   - package-ecosystem: gomod
     directory: /
     schedule:
