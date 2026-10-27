@@ -116,6 +116,45 @@ func TestWhoPrintsAHeaderAndOneRowPerName(t *testing.T) {
 	}
 }
 
+func TestWhoShowsABrokenInboxAsBrokenAndStillListsTheRest(t *testing.T) {
+	dir := newDir(t)
+	runBus(dir, "tell", "juniper", "cobalt", "fine")
+	runBus(dir, "tell", "juniper", "marlin", "also fine")
+	stump, err := os.OpenFile(filepath.Join(dir, "cobalt.jsonl"), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stump.WriteString("{\"seq\": 2, \"te")
+	stump.Close()
+
+	r := runBus(dir, "who")
+	if r.code != 0 || r.stderr != "" {
+		t.Fatalf("got %+v, want exit 0: who did its job", r)
+	}
+	if !regexp.MustCompile(`(?m)^cobalt\s+broken: line 2 is not a message$`).MatchString(r.stdout) {
+		t.Errorf("who =\n%s\nwant a broken row naming the line for cobalt", r.stdout)
+	}
+	if !regexp.MustCompile(`(?m)^marlin\s+1\s`).MatchString(r.stdout) || !strings.Contains(r.stdout, "juniper") {
+		t.Errorf("who =\n%s\nwant marlin and juniper listed as usual", r.stdout)
+	}
+}
+
+func TestASymbolicLinkAtTheBusDirectoryExitsTwo(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	r := runBus(link, "who")
+	if r.code != 2 || !strings.Contains(r.stderr, "symbolic link") {
+		t.Fatalf("got %+v, want exit 2 naming the link", r)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	if r := runBus(newDir(t), "--version"); r.code != 0 || r.stdout != "bindery dev\n" {
 		t.Fatalf("got %+v", r)

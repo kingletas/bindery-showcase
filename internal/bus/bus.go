@@ -57,6 +57,7 @@ type Presence struct {
 	Unread     int
 	LastTold   time.Time // zero when the name has never told
 	LastWaited time.Time // zero when the name has never waited
+	Broken     string    // why the inbox cannot be read, or "" when it can
 }
 
 // state is the part of a name's record that is not a message. ReadThrough is
@@ -72,6 +73,9 @@ type Bus struct {
 	dir  string
 	now  func() time.Time
 	poll time.Duration
+	// write puts one line on the end of an inbox. A test replaces it to make
+	// the disk fill up part way through.
+	write func(f *os.File, line []byte) (int, error)
 }
 
 // ValidateName refuses any name that could not safely be a file name in the bus
@@ -90,10 +94,15 @@ func Open(dir string) (*Bus, error) {
 	if dir == "" {
 		return nil, errors.New("the bus directory is empty")
 	}
+	// A link at the bus directory is refused, not followed: the checks below
+	// would be made on its target, and the link can be pointed elsewhere later.
+	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s is a symbolic link", dir)
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(dir)
+	info, err := os.Lstat(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +115,7 @@ func Open(dir string) (*Bus, error) {
 	if info.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("%s is reachable by group or others (mode %04o); use mode 0700", dir, info.Mode().Perm())
 	}
-	return &Bus{dir: dir, now: time.Now, poll: DefaultPoll}, nil
+	return &Bus{dir: dir, now: time.Now, poll: DefaultPoll, write: (*os.File).Write}, nil
 }
 
 // Tell appends one message from one name to another's inbox and returns it with
@@ -158,11 +167,29 @@ func (b *Bus) append(from, to, text string) (Message, error) {
 	if err != nil {
 		return Message{}, err
 	}
-	// One write of one whole line, so a reader never sees half a message.
-	if n, err := in.f.Write(append(line, '\n')); err != nil || n != len(line)+1 {
-		return Message{}, fmt.Errorf("could not append to the inbox of %s: %v", to, err)
+	return msg, b.appendLine(in, append(line, '\n'))
+}
+
+// appendLine writes one whole line on the end of the inbox. When the write
+// fails or is cut short, as it is on a full disk, the inbox is cut back to the
+// size it had, so the stump of a message never stays to refuse every later read.
+func (b *Bus) appendLine(in *inbox, line []byte) error {
+	info, err := in.f.Stat()
+	if err != nil {
+		return err
 	}
-	return msg, nil
+	n, err := b.write(in.f, line)
+	if err == nil && n == len(line) {
+		return nil
+	}
+	if err == nil {
+		err = io.ErrShortWrite
+	}
+	err = fmt.Errorf("could not append to the inbox of %s: %w", filepath.Base(in.f.Name()), err)
+	if cutErr := in.f.Truncate(info.Size()); cutErr != nil {
+		return fmt.Errorf("%w, and the inbox could not be cut back to %d bytes: %v", err, info.Size(), cutErr)
+	}
+	return err
 }
 
 // Wait returns the oldest message in name's inbox that no wait has returned,
@@ -250,11 +277,20 @@ func (b *Bus) presence(name string) (Presence, error) {
 	}
 	defer in.close()
 
+	// A file the bus cannot read marks this one name as broken, so that it does
+	// not hide every other name from the session asking who is there.
+	var bad *corruptError
 	s, err := in.readState()
+	if errors.As(err, &bad) {
+		return Presence{Name: name, Broken: bad.problem}, nil
+	}
 	if err != nil {
 		return Presence{}, err
 	}
 	msgs, err := in.messages()
+	if errors.As(err, &bad) {
+		return Presence{Name: name, LastTold: s.LastTold, LastWaited: s.LastWaited, Broken: bad.problem}, nil
+	}
 	if err != nil {
 		return Presence{}, err
 	}
@@ -328,9 +364,13 @@ func (in *inbox) messages() ([]Message, error) {
 		if err == io.EOF && len(line) == 0 {
 			return msgs, nil
 		}
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
 		var m Message
 		if err != nil || json.Unmarshal(line, &m) != nil || m.Seq < 1 {
-			return nil, fmt.Errorf("%s line %d is not a message", filepath.Base(in.f.Name()), n)
+			problem := fmt.Sprintf("line %d is not a message", n)
+			return nil, &corruptError{problem: problem, full: filepath.Base(in.f.Name()) + " " + problem}
 		}
 		msgs = append(msgs, m)
 	}
@@ -346,10 +386,21 @@ func (in *inbox) readState() (state, error) {
 		return s, err
 	}
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return s, fmt.Errorf("%s is not readable: %w", filepath.Base(in.statePath), err)
+		problem := filepath.Base(in.statePath) + " is not readable"
+		return s, &corruptError{problem: problem, full: problem + ": " + err.Error()}
 	}
 	return s, nil
 }
+
+// corruptError is a file of the bus that holds something the bus did not write.
+// Who reports it against the one name and goes on, where a command that works
+// on that name stops with it.
+type corruptError struct {
+	problem string // short, for a row of who
+	full    string // names the file, for an error
+}
+
+func (e *corruptError) Error() string { return e.full }
 
 // writeState replaces the state file whole, through a temporary file and a
 // rename, so a crash leaves the old state or the new one and never a mixture.

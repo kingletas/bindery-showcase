@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -501,12 +502,177 @@ func TestAnInboxLineThatIsNotAMessageRefusesTheInboxAndNamesTheLine(t *testing.T
 	for name, call := range map[string]func() error{
 		"wait": func() error { _, err := b.Wait("cobalt", 0); return err },
 		"tell": func() error { _, err := b.Tell("juniper", "cobalt", "more"); return err },
-		"who":  func() error { _, err := b.Who(); return err },
 	} {
 		// Every command reads the whole inbox, so the good first line does not
 		// let the bad second one through.
 		if err := call(); err == nil || !strings.Contains(err.Error(), "cobalt.jsonl line 2 is not a message") {
 			t.Errorf("%s: err = %v, want the inbox refused with its line number", name, err)
 		}
+	}
+}
+
+// breakInbox leaves the stump of an interrupted write on the end of name's inbox.
+func breakInbox(t *testing.T, b *Bus, name string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(b.dir, name+".jsonl"), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString("{\"seq\": 2, \"te"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWhoMarksABrokenInboxAndStillListsTheOthers(t *testing.T) {
+	b := newBus(t)
+	mustTell(t, b, "juniper", "cobalt", "fine")
+	mustTell(t, b, "juniper", "marlin", "also fine")
+	breakInbox(t, b, "cobalt")
+
+	rows, err := b.Who()
+	if err != nil {
+		t.Fatalf("one broken inbox failed who for every name: %v", err)
+	}
+	got := map[string]Presence{}
+	for _, r := range rows {
+		got[r.Name] = r
+	}
+	if len(rows) != 3 {
+		t.Fatalf("who listed %d names, want cobalt, juniper and marlin: %+v", len(rows), rows)
+	}
+	if got["cobalt"].Broken != "line 2 is not a message" {
+		t.Errorf("cobalt: Broken = %q, want the line named", got["cobalt"].Broken)
+	}
+	if got["marlin"].Broken != "" || got["marlin"].Unread != 1 || got["juniper"].Broken != "" {
+		t.Errorf("the healthy inboxes were affected: %+v", rows)
+	}
+}
+
+func TestWhoMarksAnUnreadableStateFileAsBroken(t *testing.T) {
+	b := newBus(t)
+	mustTell(t, b, "juniper", "cobalt", "fine")
+	if err := os.WriteFile(filepath.Join(b.dir, "cobalt.state"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := b.Who()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.Name == "cobalt" && r.Broken != "cobalt.state is not readable" {
+			t.Errorf("cobalt: Broken = %q, want the state file named", r.Broken)
+		}
+		if r.Name == "juniper" && r.Broken != "" {
+			t.Errorf("juniper: Broken = %q, want none", r.Broken)
+		}
+	}
+}
+
+// --- a write that fails part way ---
+
+// failingWrite writes the first keep bytes of the line and then fails the way a
+// full disk does.
+func failingWrite(keep int) func(*os.File, []byte) (int, error) {
+	return func(f *os.File, line []byte) (int, error) {
+		n := min(keep, len(line))
+		if _, err := f.Write(line[:n]); err != nil {
+			return 0, err
+		}
+		return n, syscall.ENOSPC
+	}
+}
+
+func TestAWriteThatFailsPartWayLeavesTheInboxAsItWas(t *testing.T) {
+	for name, keep := range map[string]int{"nothing written": 0, "half a line": 30, "all but the newline": 1 << 20} {
+		t.Run(name, func(t *testing.T) {
+			b := newBus(t)
+			mustTell(t, b, "juniper", "cobalt", "first")
+			path := filepath.Join(b.dir, "cobalt.jsonl")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			good := b.write
+			b.write = failingWrite(keep)
+			if _, err := b.Tell("juniper", "cobalt", "this one hits a full disk"); err == nil {
+				t.Fatal("the failed write was reported as a success")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatalf("the inbox changed after a failed write:\nbefore %q\nafter  %q", before, after)
+			}
+
+			// The inbox is still whole: it reads, takes the next message and who lists it.
+			b.write = good
+			if m := mustTell(t, b, "juniper", "cobalt", "second"); m.Seq != 2 {
+				t.Fatalf("the next message got sequence %d, want 2", m.Seq)
+			}
+			var texts []string
+			for _, m := range drain(t, b, "cobalt") {
+				texts = append(texts, m.Text)
+			}
+			if want := []string{"first", "second"}; !reflect.DeepEqual(texts, want) {
+				t.Fatalf("got %v, want %v", texts, want)
+			}
+			if rows, err := b.Who(); err != nil {
+				t.Fatal(err)
+			} else {
+				for _, r := range rows {
+					if r.Broken != "" {
+						t.Errorf("%s is marked broken after a failed write: %s", r.Name, r.Broken)
+					}
+				}
+			}
+		})
+	}
+}
+
+// --- a symbolic link at the bus directory ---
+
+func TestOpenRefusesASymbolicLinkAtTheBusDirectory(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(link); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("err = %v, want the link refused", err)
+	}
+
+	dangling := filepath.Join(root, "dangling")
+	if err := os.Symlink(filepath.Join(root, "nowhere"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dangling); err == nil {
+		t.Fatal("a dangling link was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(root, "nowhere")); err == nil {
+		t.Fatal("Open created the directory a link pointed at")
+	}
+}
+
+// Only the bus directory itself must not be a link; a link further up the path
+// is just a way of reaching it.
+func TestOpenFollowsASymbolicLinkHigherUpThePath(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(filepath.Join(link, "bus")); err != nil {
+		t.Fatalf("a bus below a linked parent was refused: %v", err)
 	}
 }

@@ -5,7 +5,8 @@
 //	bindery-bus who
 //
 // tell appends a message to TO's inbox. wait blocks until NAME has an unread
-// message, prints it and marks it read. who lists the names that have an inbox.
+// message, prints it and marks it read. who lists the names that have an inbox,
+// and marks a name whose files cannot be read as broken without hiding the rest.
 //
 // Exit codes: 0 when the command did its job (a wait that printed a message
 // included), 1 when a wait timed out with nothing to print, and 2 when the
@@ -141,6 +142,10 @@ func who(b *bus.Bus, stdout, stderr io.Writer) int {
 	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tUNREAD\tLAST TOLD\tLAST WAITED")
 	for _, r := range rows {
+		if r.Broken != "" {
+			fmt.Fprintf(w, "%s\tbroken: %s\n", r.Name, r.Broken)
+			continue
+		}
 		fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", r.Name, r.Unread, stamp(r.LastTold), stamp(r.LastWaited))
 	}
 	w.Flush()
