@@ -17,6 +17,10 @@ import (
 type Checker struct {
 	root string
 	dir  string
+	// tried and err remember the one attempt to make the copy, so that when it
+	// fails, every later check fails with it and none runs in a partial copy.
+	tried bool
+	err   error
 }
 
 // NewChecker returns a Checker for the repository whose top is root. It writes
@@ -29,6 +33,7 @@ func NewChecker(root string) *Checker {
 // more than once, and is meant to be deferred so that every exit path, a
 // failing check and a panic included, removes the directory.
 func (c *Checker) Close() error {
+	c.tried, c.err = false, nil
 	if c.dir == "" {
 		return nil
 	}
@@ -40,10 +45,14 @@ func (c *Checker) Close() error {
 // Run is a Runner. Like git, it reads the index from GIT_INDEX_FILE when that
 // is set, so a commit with a pathspec is checked as exactly what it commits.
 func (c *Checker) Run(argv []string) (string, error) {
-	if c.dir == "" {
+	if !c.tried {
+		c.tried = true
 		if err := c.snapshot(); err != nil {
-			return "", fmt.Errorf("could not check out the staged files: %w", err)
+			c.err = fmt.Errorf("could not check out the staged files: %w", err)
 		}
+	}
+	if c.err != nil {
+		return "", c.err
 	}
 	env, err := c.env()
 	if err != nil {

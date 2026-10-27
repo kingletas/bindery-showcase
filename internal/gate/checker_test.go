@@ -2,6 +2,8 @@ package gate
 
 import (
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -154,6 +156,37 @@ func TestNothingIsWrittenWhenNoLaneRuns(t *testing.T) {
 	Evaluate(staged(t, dir), "x\n", true, parse(t, okTable), c.Run)
 	if got := entries(t, tmp); len(got) != 0 {
 		t.Fatalf("the temp directory holds %v although no lane matched", got)
+	}
+}
+
+// Once the copy has failed, no later lane may run in what is left of it.
+func TestAFailedCopyFailsEveryLaterLaneToo(t *testing.T) {
+	dir := okRepo(t)
+	tmp := scratch(t)
+	// An index file git cannot read makes checkout-index fail after the copy's
+	// directory exists.
+	broken := filepath.Join(t.TempDir(), "index")
+	if err := os.WriteFile(broken, []byte("not an index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_INDEX_FILE", broken)
+
+	table := parse(t, "go\t*.go\ttrue\ndocs\t*.md\ttrue\n")
+	changes := []Change{{Status: 'A', Path: "a.go"}, {Status: 'A', Path: "b.md"}}
+	c := NewChecker(dir)
+	findings := Evaluate(changes, "x\n", true, table, c.Run)
+
+	if got := findingNames(findings); !reflect.DeepEqual(got, []string{"go", "docs"}) {
+		t.Fatalf("findings = %+v, want both lanes refused", findings)
+	}
+	for _, f := range findings {
+		if !strings.Contains(f.Reason, "could not check out the staged files") {
+			t.Errorf("lane %s: reason %q does not say the copy failed", f.Name, f.Reason)
+		}
+	}
+	c.Close()
+	if got := entries(t, tmp); len(got) != 0 {
+		t.Fatalf("the temp directory holds %v after a failed copy and Close, want nothing", got)
 	}
 }
 
